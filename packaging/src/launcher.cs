@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 
 internal static class Launcher
 {
@@ -13,8 +14,26 @@ internal static class Launcher
         MessageBoxW(IntPtr.Zero, message, "中医工作台", 0x00000010u);
     }
 
+    private static string Quote(string value)
+    {
+        return "\"" + value + "\"";
+    }
+
+    // 把命令行参数原样转给 start.mjs（例如 --background：开机自启时只起服务、不弹窗口）
+    private static string BuildArguments(string script, string[] extra)
+    {
+        var builder = new StringBuilder();
+        builder.Append(Quote(script));
+        for (var i = 0; i < extra.Length; i += 1)
+        {
+            builder.Append(' ');
+            builder.Append(Quote(extra[i]));
+        }
+        return builder.ToString();
+    }
+
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
         try
         {
@@ -36,7 +55,7 @@ internal static class Launcher
             var info = new ProcessStartInfo
             {
                 FileName = node,
-                Arguments = "\"" + script + "\"",
+                Arguments = BuildArguments(script, args),
                 WorkingDirectory = baseDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,

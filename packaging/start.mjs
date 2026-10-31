@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.ZYB_PORT || 4310);
 const url = `http://127.0.0.1:${port}`;
+// --background：开机自启时用，只把服务拉起来（不弹窗口），之后点桌面图标秒开
+const background = process.argv.includes("--background") || process.env.ZYB_BACKGROUND === "1";
 const dataDir = path.join(root, "data");
 const logDir = path.join(dataDir, "logs");
 const dbFile = path.join(root, "prisma", "dev.db");
@@ -64,7 +66,7 @@ async function dbReady(timeout = 2500) {
 }
 
 function openWindow() {
-  if (process.env.ZYB_NO_BROWSER === "1") return;
+  if (background || process.env.ZYB_NO_BROWSER === "1") return;
   const edgeCandidates = [
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",

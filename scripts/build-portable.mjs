@@ -23,6 +23,8 @@ function run(command, args, options = {}) {
 }
 
 console.log("1/6 next build（standalone）…");
+// 上一次构建留下的 standalone 里是符号链接，直接重跑 next build 会报 EPERM: symlink
+rmSync(standalone, { recursive: true, force: true });
 run(nodeExe, [path.join(root, "node_modules", "next", "dist", "bin", "next"), "build"]);
 
 console.log("2/6 准备输出目录…");
@@ -127,15 +129,20 @@ for (const file of readdirSync(packaging)) {
   const from = path.join(packaging, file);
   if (statSync(from).isFile()) copyFileSync(from, path.join(out, file));
 }
-// 启动器/停止器 exe（用系统自带 csc 编译，见 scripts/build-exe.mjs）
+// 启动器/停止器/自启工具 exe（用系统自带 csc 编译，见 scripts/build-exe.mjs）
 run(nodeExe, [path.join(root, "scripts", "build-exe.mjs")]);
-for (const exe of ["中医工作台.exe", "停止工作台.exe"]) {
+for (const exe of ["中医工作台.exe", "停止工作台.exe", "开机自启.exe", "取消自启.exe"]) {
   const from = path.join(packaging, "bin", exe);
   if (!existsSync(from)) {
     console.error(`缺少 ${from}，请先确认 build-exe.mjs 能编译成功`);
     process.exit(1);
   }
   copyFileSync(from, path.join(out, exe));
+}
+// 开机自启的 PowerShell 工具（bat 会调用；比 exe 更稳，因为 exe 可能被系统策略拦住写启动项）
+const toolsFrom = path.join(packaging, "tools");
+if (existsSync(toolsFrom)) {
+  cpSync(toolsFrom, path.join(out, "tools"), { recursive: true, force: true });
 }
 for (const file of ["restore-backup.mjs", "import-classics.mjs"]) {
   const from = path.join(root, "scripts", file);

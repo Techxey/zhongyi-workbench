@@ -1,5 +1,5 @@
-// 用系统自带的 .NET Framework 编译器把两个 C# 启动器编译成 exe（无需联网、无需装 SDK）
-// 输出：packaging/bin/中医工作台.exe、packaging/bin/停止工作台.exe（内嵌 app.ico）
+// 用系统自带的 .NET Framework 编译器把 C# 启动器编译成 exe（无需联网、无需装 SDK）
+// 输出：packaging/bin/{中医工作台,停止工作台,开机自启,取消自启}.exe（内嵌 app.ico）
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, copyFileSync } from "node:fs";
 import path from "node:path";
@@ -24,6 +24,8 @@ mkdirSync(outDir, { recursive: true });
 const jobs = [
   { source: "launcher.cs", out: "中医工作台.exe" },
   { source: "stopper.cs", out: "停止工作台.exe" },
+  { source: "autostart.cs", out: "开机自启.exe" },
+  { source: "autostart.cs", out: "取消自启.exe", define: "REMOVE" },
 ];
 
 for (const job of jobs) {
@@ -32,10 +34,10 @@ for (const job of jobs) {
     "/codepage:65001",
     "/target:winexe",
     "/optimize+",
-    `/out:${path.join(outDir, job.out)}`,
-    path.join(src, job.source),
   ];
-  if (existsSync(icon)) args.splice(1, 0, `/win32icon:${icon}`);
+  if (job.define) args.push(`/define:${job.define}`);
+  if (existsSync(icon)) args.push(`/win32icon:${icon}`);
+  args.push(`/out:${path.join(outDir, job.out)}`, path.join(src, job.source));
   execFileSync(csc, args, { stdio: "inherit" });
   console.log("built", job.out);
 }
