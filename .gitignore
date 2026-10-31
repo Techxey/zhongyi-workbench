@@ -24,3 +24,4 @@ data/backups/
 tmp/
 
 dist/
+dist-test/

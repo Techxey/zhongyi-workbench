@@ -127,6 +127,16 @@ for (const file of readdirSync(packaging)) {
   const from = path.join(packaging, file);
   if (statSync(from).isFile()) copyFileSync(from, path.join(out, file));
 }
+// 启动器/停止器 exe（用系统自带 csc 编译，见 scripts/build-exe.mjs）
+run(nodeExe, [path.join(root, "scripts", "build-exe.mjs")]);
+for (const exe of ["中医工作台.exe", "停止工作台.exe"]) {
+  const from = path.join(packaging, "bin", exe);
+  if (!existsSync(from)) {
+    console.error(`缺少 ${from}，请先确认 build-exe.mjs 能编译成功`);
+    process.exit(1);
+  }
+  copyFileSync(from, path.join(out, exe));
+}
 for (const file of ["restore-backup.mjs", "import-classics.mjs"]) {
   const from = path.join(root, "scripts", file);
   if (existsSync(from)) copyFileSync(from, path.join(out, file));
@@ -141,4 +151,4 @@ const total = readdirSync(out, { recursive: true, withFileTypes: true })
   .filter((entry) => entry.isFile())
   .reduce((sum, entry) => sum + statSync(path.join(entry.parentPath ?? entry.path ?? out, entry.name)).size, 0);
 console.log(`输出：${out}（${(total / 1024 / 1024).toFixed(0)} MB）`);
-console.log("双击「启动工作台.vbs」即可运行；停止用「停止工作台.vbs」。");
+console.log("双击「中医工作台.exe」即可运行；停止用「停止工作台.exe」（VBS/BAT 为备用方式）。");
