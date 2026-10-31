@@ -1,11 +1,67 @@
 "use server";
 
+import { compare, hash } from "bcryptjs";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { requireUser, destroySession } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
+import { createBackup, pruneBackups } from "@/lib/backup";
 
-export type SettingsState = { ok?: boolean; error?: string };
+export type SettingsState = { ok?: boolean; error?: string; message?: string };
+
+/** 立即备份一份 dev.db（VACUUM INTO 快照），并按保留天数清理 */
+export async function backupNow(): Promise<SettingsState> {
+  const user = await requireUser();
+  const file = await createBackup();
+  const removed = await pruneBackups();
+  await writeAudit({
+    entityType: "export",
+    entityId: `backup:${file.name}`,
+    action: "create",
+    after: { name: file.name, size: file.size, pruned: removed },
+    operatorId: user.id,
+  });
+  revalidatePath("/settings");
+  return { ok: true, message: `已备份 ${file.name}` };
+}
+
+/** 改密码：校验旧密码，改完清掉当前会话，强制重新登录 */
+export async function changePassword(
+  _prev: SettingsState,
+  formData: FormData,
+): Promise<SettingsState> {
+  const user = await requireUser();
+  const current = String(formData.get("currentPassword") ?? "");
+  const next = String(formData.get("newPassword") ?? "");
+  const confirm = String(formData.get("confirmPassword") ?? "");
+
+  if (!current || !next) return { error: "当前密码和新密码都要填" };
+  if (next.length < 8) return { error: "新密码至少 8 位" };
+  if (next !== confirm) return { error: "两次输入的新密码不一致" };
+  if (next === current) return { error: "新密码不能和当前密码相同" };
+
+  const row = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!row) return { error: "账号不存在" };
+  if (!(await compare(current, row.passwordHash))) return { error: "当前密码不对" };
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await hash(next, 10) },
+  });
+  await writeAudit({
+    entityType: "export",
+    entityId: `user:${user.id}`,
+    action: "update",
+    after: { passwordChanged: true },
+    operatorId: user.id,
+  });
+
+  await destroySession();
+  revalidatePath("/settings");
+  redirect("/login?passwordChanged=1");
+}
+
 
 export async function saveSettings(
   _prev: SettingsState,

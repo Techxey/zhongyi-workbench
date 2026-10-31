@@ -20,6 +20,8 @@ const prescriptionIds = (
 await prisma.prescriptionItem.deleteMany({ where: { prescriptionId: { in: prescriptionIds } } });
 await prisma.prescription.deleteMany({ where: { id: { in: prescriptionIds } } });
 await prisma.attachment.deleteMany({});
+await prisma.templateItem.deleteMany({});
+await prisma.templatePrescription.deleteMany({});
 await prisma.visitRevision.deleteMany({ where: { visitId: { in: visitIds } } });
 await prisma.visit.deleteMany({ where: { id: { in: visitIds } } });
 await prisma.patient.deleteMany({});
@@ -51,6 +53,21 @@ const chen = await prisma.patient.create({
     constitution: "气虚质",
     allergy: "否认药物过敏",
     pastHistory: "甲状腺功能减退 3 年，服左甲状腺素钠片 50μg qd。",
+    createdAt: iso(now),
+    updatedAt: iso(now),
+  },
+});
+
+const wang = await prisma.patient.create({
+  data: {
+    name: "王建国",
+    gender: "male",
+    birthYear: 1966,
+    phone: "13700005678",
+    constitution: "痰湿质",
+    allergy: "磺胺类药物过敏",
+    pastHistory: "高血压 8 年，2 型糖尿病 3 年，服二甲双胍 0.5g bid。",
+    note: "睡眠差，夜间打鼾明显。",
     createdAt: iso(now),
     updatedAt: iso(now),
   },
@@ -142,6 +159,115 @@ await prisma.prescriptionItem.createMany({
 await prisma.visit.update({
   where: { id: visit.id },
   data: { status: "signed", currentRevisionId: revision.id },
+});
+
+// 张淑芬：一份没写完的草稿，进「接诊」页可以直接继续
+const draftAt = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+await prisma.visit.create({
+  data: {
+    patientId: zhang.id,
+    visitNo: 1,
+    visitAt: iso(draftAt),
+    status: "draft",
+    createdAt: iso(draftAt),
+  },
+});
+
+// 王建国：12 天前看过一次，医生约 7 天后复诊 → 今天逾期 5 天，用来演示「待复诊」
+const wangVisitAt = new Date(now.getTime() - 12 * 24 * 60 * 60 * 1000);
+const wangVisit = await prisma.visit.create({
+  data: {
+    patientId: wang.id,
+    visitNo: 1,
+    visitAt: iso(wangVisitAt),
+    status: "signed",
+    createdAt: iso(wangVisitAt),
+  },
+});
+const wangRevision = await prisma.visitRevision.create({
+  data: {
+    visitId: wangVisit.id,
+    revisionNo: 1,
+    parentRevisionId: null,
+    chiefComplaint: "头重如裹、晨起痰多 1 月余",
+    presentIllness:
+      "近 1 月头重昏沉、晨起咳痰量多色白，胸闷脘痞，食欲不振，大便黏滞；形体偏胖，夜间打鼾。",
+    symptomsJson: JSON.stringify(["头晕", "胸闷", "咳嗽", "纳差", "便溏"]),
+    tongueJson: JSON.stringify(["舌胖大", "苔白腻"]),
+    pulseJson: JSON.stringify(["脉滑"]),
+    syndrome: "痰湿内阻",
+    treatment: "燥湿化痰，理气和中",
+    advice: "忌肥甘厚味；每晚快走 30 分钟，体重每月减 1-2 斤为宜。",
+    followupDays: 7,
+    remindFollowup: true,
+    operatorId: doctor.id,
+    createdAt: iso(wangVisitAt),
+  },
+});
+const wangRx = await prisma.prescription.create({
+  data: {
+    visitRevisionId: wangRevision.id,
+    formulaName: "二陈汤",
+    formulaSource: "《太平惠民和剂局方》",
+    doses: 7,
+    usageText: "每日 1 剂，水煎 400ml，分早晚温服",
+    snapshotJson: JSON.stringify({
+      formulaName: "二陈汤",
+      source: "《太平惠民和剂局方》",
+      items: [
+        { name: "半夏", dose: "9g" },
+        { name: "陈皮", dose: "6g" },
+        { name: "茯苓", dose: "9g" },
+        { name: "炙甘草", dose: "4.5g" },
+      ],
+      capturedAt: iso(wangVisitAt),
+    }),
+    createdAt: iso(wangVisitAt),
+  },
+});
+await prisma.prescriptionItem.createMany({
+  data: [
+    ["半夏", "9", 9],
+    ["陈皮", "6", 6],
+    ["茯苓", "9", 9],
+    ["炙甘草", "4.5", 4.5],
+  ].map(([name, dose, value], index) => ({
+    prescriptionId: wangRx.id,
+    herbName: name,
+    dose: `${dose}g`,
+    doseValue: value,
+    doseUnit: "g",
+    role: "main",
+    sortNo: index + 1,
+    note: null,
+  })),
+});
+await prisma.visit.update({
+  where: { id: wangVisit.id },
+  data: { currentRevisionId: wangRevision.id },
+});
+
+await prisma.templatePrescription.create({
+  data: {
+    kind: "favorite",
+    name: "归脾汤（心脾两虚）",
+    formulaName: "归脾汤",
+    formulaSource: kbItem?.source ?? "《正体类要》",
+    compositionJson: JSON.stringify(herbs.map(([name, dose]) => ({ name, dose: `${dose}g` }))),
+    usageText: "每日 1 剂，水煎 400ml，分早晚温服",
+    note: "失眠多梦、心悸乏力时常用；7 剂。",
+    createdBy: doctor.id,
+    createdAt: iso(now),
+    items: {
+      create: herbs.map(([name, dose, value], index) => ({
+        herbName: name,
+        dose: `${dose}g`,
+        doseValue: value,
+        doseUnit: "g",
+        sortNo: index + 1,
+      })),
+    },
+  },
 });
 
 await prisma.auditLog.createMany({

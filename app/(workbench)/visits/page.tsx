@@ -28,6 +28,18 @@ function timeOf(iso: string): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function daysBetween(from: Date, to: Date): number {
+  return Math.round((startOfDay(to).getTime() - startOfDay(from).getTime()) / 86_400_000);
+}
+
+function formatDay(date: Date): string {
+  return `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
+}
+
 export default async function ClinicPage() {
   await requireUser();
 
@@ -43,6 +55,28 @@ export default async function ClinicPage() {
   const drafts = visits.filter((visit) => visit.status === "draft");
   const today = visits.filter((visit) => visit.status !== "draft" && isToday(visit.visitAt));
   const recent = visits.filter((visit) => visit.status !== "draft" && !isToday(visit.visitAt)).slice(0, 8);
+
+  // 待复诊：医生写病历时填的「X 天后复诊」，只算勾了「就诊时提醒」的；
+  // 每位患者只看最近一次已签病历（他后来又来了，旧的那次就算已复诊）
+  const now = new Date();
+  const latestByPatient = new Map<string, (typeof visits)[number]>();
+  for (const visit of visits) {
+    if (visit.status === "draft") continue;
+    if (!latestByPatient.has(visit.patientId)) latestByPatient.set(visit.patientId, visit);
+  }
+  const followups = [...latestByPatient.values()]
+    .map((visit) => {
+      const revision = visit.revisions[0];
+      if (!revision || revision.followupDays === null || revision.remindFollowup === false) return null;
+      const due = new Date(visit.visitAt);
+      due.setDate(due.getDate() + revision.followupDays);
+      const offset = daysBetween(now, due);
+      if (offset > 3) return null;
+      return { visit, revision, due, offset };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .sort((a, b) => a.due.getTime() - b.due.getTime());
+  const dueCount = followups.filter((row) => row.offset <= 0).length;
 
   return (
     <>
@@ -130,6 +164,51 @@ export default async function ClinicPage() {
             </ul>
           )}
         </section>
+
+        {followups.length > 0 ? (
+          <section className="card">
+            <div className="px-5 h-[50px] flex items-center justify-between border-b border-line-2">
+              <h2 className="section-title">待复诊</h2>
+              <span className="text-[11.5px] text-ink-4 num">
+                {followups.length} 位该回诊
+                {dueCount > 0 ? ` · ${dueCount} 位已到期` : ""}
+              </span>
+            </div>
+            <ul>
+              {followups.map(({ visit, revision, due, offset }) => (
+                <li key={visit.id} className="border-b border-line-2 last:border-b-0">
+                  <Link
+                    href={`/patients/${visit.patientId}`}
+                    className="px-5 h-[56px] flex items-center gap-4 hover:bg-ghost transition-colors"
+                  >
+                    <span className="w-[74px] text-[12px] text-ink-4 num">{formatDay(due)}</span>
+                    <span className="text-[14px] text-ink font-medium">{visit.patient.name}</span>
+                    <span className="text-[12px] text-ink-3">
+                      {genderLabel(visit.patient.gender)} · {ageOf(visit.patient.birthYear)}
+                    </span>
+                    <span className="text-[12px] text-ink-3">第 {visit.visitNo} 次</span>
+                    {revision.syndrome ? <span className="chip chip-brand">{revision.syndrome}</span> : null}
+                    <span
+                      className={`ml-auto text-[12px] num ${
+                        offset < 0 ? "text-danger" : offset === 0 ? "text-brand" : "text-ink-4"
+                      }`}
+                    >
+                      {offset < 0
+                        ? `逾期 ${-offset} 天`
+                        : offset === 0
+                          ? "今天该复诊"
+                          : `${offset} 天后`}
+                    </span>
+                    <span className="text-[11.5px] text-brand">去接诊 →</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <p className="px-5 py-2.5 text-[11.5px] text-ink-4 border-t border-line-2">
+              按病历里填的「复诊 X 天后」推算；患者后来又来过的那次会自动从清单里去掉。
+            </p>
+          </section>
+        ) : null}
 
         {recent.length > 0 ? (
           <section className="card">

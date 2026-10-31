@@ -7,7 +7,10 @@ import { TopBar } from "@/components/topbar";
 import { ThemeSegmented } from "@/components/theme-toggle";
 import { DEFAULT_USAGE } from "@/lib/visit";
 import { VOCAB_CATEGORIES, VOCAB_LABELS } from "@/lib/vocabulary";
+import { ensureDailyBackup, listBackups } from "@/lib/backup";
+import { BackupCard } from "./backup-card";
 import { ClinicForm } from "./clinic-form";
+import { PasswordForm } from "./password-form";
 import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
@@ -38,6 +41,11 @@ export default async function SettingsPage() {
     count: vocabCounts.find((row) => row.category === category)?._count._all ?? 0,
   }));
 
+  // 每天第一次打开设置时补一份备份（失败不影响页面）
+  await ensureDailyBackup().catch(() => null);
+  const backups = await listBackups().catch(() => []);
+  const retentionDays = Number(retention?.value ?? 30);
+
   return (
     <>
       <TopBar title="设置" subtitle="账号、诊所、词库与备份" />
@@ -62,6 +70,15 @@ export default async function SettingsPage() {
               </dd>
             </div>
           </dl>
+          <div className="px-5 pb-4 flex items-center gap-3">
+            <Link href="/settings/audit" className="btn btn-ghost">
+              查看操作记录
+            </Link>
+            <span className="text-[12px] text-ink-4">谁在什么时候改了哪份病历，这里都能查</span>
+          </div>
+          <div className="px-5 pb-5">
+            <PasswordForm />
+          </div>
         </section>
 
         <ClinicForm
@@ -132,6 +149,8 @@ export default async function SettingsPage() {
             </p>
           </div>
         </section>
+
+        <BackupCard backups={backups} retentionDays={retentionDays} />
 
         <SettingsForm
           backupRetentionDays={Number(retention?.value ?? 30)}

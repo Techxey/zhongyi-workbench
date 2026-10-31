@@ -210,5 +210,35 @@ export async function saveAsTemplate(
     operatorId: user.id,
   });
 
+  revalidatePath(`/visits/${visitId}`);
   return { ok: true, name: label };
+}
+
+export type DeleteTemplateResult = { ok: boolean; message: string };
+
+/** 删除常用方 / 协定处方：只删模板，不动任何已保存病历 */
+export async function deleteTemplate(id: string): Promise<DeleteTemplateResult> {
+  const user = await requireUser();
+  const template = await prisma.templatePrescription.findUnique({ where: { id } });
+  if (!template) return { ok: false, message: "这个方已经删过了" };
+
+  await prisma.$transaction([
+    prisma.templateItem.deleteMany({ where: { templateId: id } }),
+    prisma.templatePrescription.delete({ where: { id } }),
+  ]);
+
+  await prisma.auditLog.create({
+    data: {
+      entityType: "prescription",
+      entityId: id,
+      action: "delete",
+      beforeJson: JSON.stringify({ name: template.name, kind: template.kind }),
+      afterJson: null,
+      operatorId: user.id,
+      createdAt: new Date().toISOString(),
+    },
+  });
+
+  revalidatePath("/visits", "layout");
+  return { ok: true, message: `已删除「${template.name}」` };
 }

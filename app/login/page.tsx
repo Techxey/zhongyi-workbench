@@ -11,11 +11,11 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; passwordChanged?: string }>;
 }) {
   const user = await getSession();
   if (user) redirect("/patients");
-  const { next } = await searchParams;
+  const { next, passwordChanged } = await searchParams;
 
   return (
     <div className="min-h-screen bg-canvas flex items-center justify-center px-6 py-16">
@@ -32,6 +32,12 @@ export default async function LoginPage({
             <p className="text-[12px] text-ink-3 mt-0.5">个人诊所 · 单人工作站</p>
           </div>
         </div>
+
+        {passwordChanged ? (
+          <p className="mb-4 text-[12.5px] text-brand bg-brand-soft border border-chip-brand-line rounded-[8px] px-3 py-2">
+            密码已修改，请用新密码重新登录。
+          </p>
+        ) : null}
 
         <div className="card p-6">
           <h2 className="text-[14px] text-ink mb-1">医生登录</h2>

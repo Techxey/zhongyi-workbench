@@ -82,7 +82,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     null;
   const previousRx = await loadPrescription(previousRevision?.id);
 
-  const [symptomTerms, syndromeAliases, incompatPairs, clinicSetting, clinicDoctor, defaultUsage, vocabItems, attachmentRows] =
+  const [symptomTerms, syndromeAliases, incompatPairs, clinicSetting, clinicDoctor, defaultUsage, vocabItems, attachmentRows, templateRows] =
     await Promise.all([
       prisma.symptomTerm.findMany({ orderBy: [{ useCount: "desc" }, { term: "asc" }], take: 12 }),
       prisma.kbAlias.findMany({
@@ -98,6 +98,11 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         where: { patientId: visit.patientId },
         orderBy: { createdAt: "desc" },
         take: 60,
+      }),
+      prisma.templatePrescription.findMany({
+        include: { items: { orderBy: { sortNo: "asc" } } },
+        orderBy: { createdAt: "desc" },
+        take: 24,
       }),
     ]);
 
@@ -247,6 +252,16 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
       }),
     ),
     kbFormula,
+    templates: templateRows.map((template) => ({
+      id: template.id,
+      name: template.name,
+      kind: template.kind,
+      note: template.note,
+      items: template.items.map((item) => ({
+        name: item.herbName,
+        dose: item.dose ?? "",
+      })),
+    })),
   };
 
   return <VisitScreen data={data} />;

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AttachmentGallery } from "@/components/attachment-gallery";
 import { TermChips } from "@/components/term-chips";
@@ -29,7 +30,7 @@ import {
 } from "@/lib/vocabulary";
 import { bumpConsultTerms } from "@/lib/vocabulary-actions";
 import { registerKbInsert, setKbContext, type KbInsertPayload } from "@/lib/kb-bridge";
-import { saveAsTemplate, saveVisit } from "./actions";
+import { saveAsTemplate, saveVisit, deleteTemplate } from "./actions";
 
 export type KbFormula = {
   id: string;
@@ -41,6 +42,14 @@ export type KbFormula = {
   usageText: string | null;
   items: RxLine[];
   version: number;
+};
+
+export type TemplateSummary = {
+  id: string;
+  name: string;
+  kind: string;
+  note: string | null;
+  items: { name: string; dose: string }[];
 };
 
 export type PreviousRecord = {
@@ -88,6 +97,8 @@ export type ConsultationData = {
   /** 该患者的图片资料（舌象照片、检查报告、病历照片） */
   attachments: AttachmentItem[];
   kbFormula: KbFormula | null;
+  /** 保存过的常用方 / 协定处方，右栏可一键套用 */
+  templates: TemplateSummary[];
 };
 
 function mmss(seconds: number): string {
@@ -97,6 +108,7 @@ function mmss(seconds: number): string {
 }
 
 export function VisitScreen({ data }: { data: ConsultationData }) {
+  const router = useRouter();
   const [draft, setDraft] = useState<VisitDraft>(data.draft);
   const [revisionNo, setRevisionNo] = useState(data.revisionNo);
   const [dirty, setDirty] = useState(false);
@@ -332,6 +344,56 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
     setKbPending(null);
     setToast(`已带入《${payload.name}》${items.length} 味，剂数可继续改`);
     window.setTimeout(() => dosesRef.current?.focus(), 40);
+  };
+
+  /** 套用存过的常用方 / 协定处方（不带知识库快照，方名与药味直接写入） */
+  const applyTemplate = (template: TemplateSummary) => {
+    const kindLabel = template.kind === "agreed" ? "协定处方" : "我的常用方";
+    const items: HerbDraft[] =
+      template.items.length > 0
+        ? template.items.map((item, index) => {
+            const dose = parseDose(item.dose);
+            return {
+              key: `tpl-${template.id}-${index}`,
+              name: item.name,
+              doseValue: dose.value,
+              doseUnit: dose.unit || "g",
+              role: null,
+            };
+          })
+        : [newHerb()];
+
+    const replace = () => {
+      setDraft((current) => ({
+        ...current,
+        prescription: {
+          ...current.prescription,
+          formulaName: template.name,
+          formulaSource: kindLabel,
+          kbItemId: null,
+          kbItemVersion: null,
+          items,
+        },
+      }));
+      setDirty(true);
+      setToast(`已套用「${template.name}」${items.length} 味`);
+      window.setTimeout(() => dosesRef.current?.focus(), 40);
+    };
+
+    if (draft.prescription.items.some((item) => item.name.trim())) {
+      const confirmed = window.confirm(
+        `处方里已有药味。用「${template.name}」的 ${items.length} 味替换现有处方？\n（取消则不改，想追加请用知识检索）`,
+      );
+      if (!confirmed) return;
+    }
+    replace();
+  };
+
+  const handleDeleteTemplate = async (template: TemplateSummary) => {
+    if (!window.confirm(`删除「${template.name}」？删除后不能再套用，已保存的病历不受影响。`)) return;
+    const result = await deleteTemplate(template.id);
+    setToast(result.message);
+    router.refresh();
   };
 
   const appendKbHerb = (payload: KbInsertPayload) => {
@@ -1066,6 +1128,56 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
             />
           </section>
 
+          {/* 常用方 / 协定处方：套用后仍可逐味改 */}
+          <section className="rounded-[10px] border border-line-2 overflow-hidden">
+            <details>
+              <summary className="flex items-center justify-between px-3.5 h-[34px] cursor-pointer select-none hover:bg-ghost">
+                <span className="text-[11.5px] text-ink-3">
+                  我的常用方 · 协定处方
+                  <span className="text-ink-4 num"> （{data.templates.length}）</span>
+                </span>
+                <span className="text-[11px] text-ink-4">点开套用</span>
+              </summary>
+              <div className="px-3.5 pb-3 space-y-1">
+                {data.templates.length === 0 ? (
+                  <p className="text-[11.5px] text-ink-4 leading-relaxed py-1">
+                    还没有存过方。签完一张处方后点「存为我的常用方」，下次相同情况可一键套用。
+                  </p>
+                ) : (
+                  data.templates.map((template) => (
+                    <div
+                      key={template.id}
+                      className="group flex items-center gap-2 rounded-[6px] px-1.5 h-[30px] hover:bg-ghost"
+                    >
+                      <span className="text-[12.5px] text-ink truncate">{template.name}</span>
+                      <span className="text-[11px] text-ink-4 num">{template.items.length} 味</span>
+                      <span className="text-[10.5px] text-ink-4">
+                        {template.kind === "agreed" ? "协定" : "常用"}
+                      </span>
+                      <span className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          className="text-[11.5px] text-brand hover:underline"
+                          onClick={() => applyTemplate(template)}
+                        >
+                          套用
+                        </button>
+                        <button
+                          type="button"
+                          className="w-5 h-5 grid place-items-center text-ink-4 hover:text-danger"
+                          title="删除"
+                          onClick={() => handleDeleteTemplate(template)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+          </section>
+
           {/* 快捷操作 */}
           <section className="flex gap-2">
             <button
@@ -1074,6 +1186,7 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
               onClick={async () => {
                 const result = await saveAsTemplate(data.visitId, "favorite");
                 setToast(result.ok ? `已存为：${result.name}` : result.message);
+                router.refresh();
               }}
             >
               存为我的常用方
@@ -1084,6 +1197,7 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
               onClick={async () => {
                 const result = await saveAsTemplate(data.visitId, "agreed");
                 setToast(result.ok ? `已存为：${result.name}` : result.message);
+                router.refresh();
               }}
             >
               另存为协定处方
