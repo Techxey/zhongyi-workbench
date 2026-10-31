@@ -1,0 +1,262 @@
+// 中医诊疗工作台 · 数据模型
+// 设计要点（见《中医诊疗工作台-第一版开发提示词.md》附录 A）：
+// 1. 病历不可变：内容只存在于 visit_revisions，只新增、不更新（DB 触发器 + 服务层双保险）
+// 2. 处方快照：prescriptions.snapshot_json 保存带入那一刻的知识库内容
+// 3. 一切写操作进 audit_logs
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  displayName  String   @map("display_name")
+  role         String   @default("doctor") // doctor | admin
+  createdAt    String   @map("created_at")
+
+  @@map("users")
+}
+
+model Patient {
+  id           String  @id @default(uuid())
+  name         String
+  gender       String? // male | female | unknown
+  birthYear    Int?    @map("birth_year")
+  phone        String?
+  constitution String? // 体质：气虚质/阳虚质…
+  allergy      String? // 过敏史，空表示"否认"
+  pastHistory  String? @map("past_history")
+  note         String?
+  createdAt    String  @map("created_at")
+  updatedAt    String  @map("updated_at")
+
+  visits Visit[]
+
+  @@map("patients")
+}
+
+model Visit {
+  id                String  @id @default(uuid())
+  patientId         String  @map("patient_id")
+  visitNo           Int     @map("visit_no")
+  visitAt           String  @map("visit_at")
+  status            String  @default("draft") // draft | signed
+  currentRevisionId String? @map("current_revision_id")
+  createdAt         String  @map("created_at")
+
+  patient  Patient         @relation(fields: [patientId], references: [id])
+  revisions VisitRevision[]
+
+  @@unique([patientId, visitNo])
+  @@map("visits")
+}
+
+model VisitRevision {
+  id               String  @id @default(uuid())
+  visitId          String  @map("visit_id")
+  revisionNo       Int     @map("revision_no")
+  parentRevisionId String? @map("parent_revision_id")
+  chiefComplaint   String? @map("chief_complaint")
+  presentIllness   String? @map("present_illness")
+  symptomsJson     String? @map("symptoms_json")
+  tongueJson       String? @map("tongue_json")
+  pulseJson        String? @map("pulse_json")
+  syndrome         String?
+  treatment        String?
+  advice           String?
+  followupDays     Int?    @map("followup_days")
+  amendedReason    String? @map("amended_reason")
+  operatorId       String  @map("operator_id")
+  createdAt        String  @map("created_at")
+
+  visit         Visit          @relation(fields: [visitId], references: [id])
+  prescriptions Prescription[]
+
+  @@unique([visitId, revisionNo])
+  @@map("visit_revisions")
+}
+
+model Prescription {
+  id              String  @id @default(uuid())
+  visitRevisionId String  @map("visit_revision_id")
+  formulaName     String? @map("formula_name")
+  formulaSource   String? @map("formula_source")
+  kbItemId        String? @map("kb_item_id")
+  kbItemVersion   Int?    @map("kb_item_version")
+  doses           Int?
+  usageText       String? @map("usage_text")
+  snapshotJson    String? @map("snapshot_json")
+  createdAt       String  @map("created_at")
+
+  revision VisitRevision      @relation(fields: [visitRevisionId], references: [id])
+  items    PrescriptionItem[]
+
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id             String  @id @default(uuid())
+  prescriptionId String  @map("prescription_id")
+  herbName       String  @map("herb_name")
+  dose           String?
+  doseValue      Float?  @map("dose_value")
+  doseUnit       String? @map("dose_unit")
+  role           String? // 君/臣/佐/使
+  sortNo         Int     @map("sort_no")
+  note           String?
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+
+  @@map("prescription_items")
+}
+
+model KbItem {
+  id             String  @id @default(uuid())
+  type           String // formula | herb | case | classic
+  name           String
+  source         String?
+  currentVersion Int     @default(1) @map("current_version")
+  status         String  @default("active") // active | disabled
+  createdAt      String  @map("created_at")
+  updatedAt      String  @map("updated_at")
+
+  versions KbItemVersion[]
+  aliases  KbAlias[]
+
+  @@unique([type, name, source])
+  @@map("kb_items")
+}
+
+model KbItemVersion {
+  id               String  @id @default(uuid())
+  kbItemId         String  @map("kb_item_id")
+  version          Int
+  compositionJson  String? @map("composition_json")
+  efficacy         String?
+  indication       String?
+  usageText        String? @map("usage_text")
+  contraindication String?
+  commentary       String?
+  rawJson          String? @map("raw_json")
+  batchId          String? @map("batch_id")
+  createdAt        String  @map("created_at")
+
+  item KbItem @relation(fields: [kbItemId], references: [id])
+
+  @@unique([kbItemId, version])
+  @@map("kb_item_versions")
+}
+
+model KbAlias {
+  id        String  @id @default(uuid())
+  kbItemId  String? @map("kb_item_id")
+  term      String
+  normTerm  String  @map("norm_term")
+  aliasType String  @map("alias_type") // formula_name | herb_name | symptom | syndrome
+  weight    Float   @default(1)
+
+  item KbItem? @relation(fields: [kbItemId], references: [id])
+
+  @@index([normTerm])
+  @@map("kb_aliases")
+}
+
+model KbImportBatch {
+  id         String  @id @default(uuid())
+  filename   String?
+  totalRows  Int?    @map("total_rows")
+  okRows     Int?    @map("ok_rows")
+  warnRows   Int?    @map("warn_rows")
+  errorRows  Int?    @map("error_rows")
+  operatorId String? @map("operator_id")
+  createdAt  String  @map("created_at")
+  rolledBack Int     @default(0) @map("rolled_back")
+
+  @@map("kb_import_batches")
+}
+
+model AuditLog {
+  id         String  @id @default(uuid())
+  entityType String  @map("entity_type")
+  entityId   String  @map("entity_id")
+  action     String // create | update | sign | amend | import | export | view_pii
+  beforeJson String? @map("before_json")
+  afterJson  String? @map("after_json")
+  operatorId String? @map("operator_id")
+  createdAt  String  @map("created_at")
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// —— 以下为文档未覆盖、实现时补齐的表（已在交付说明中列出）——
+
+// 常用方 / 协定处方模板（R2 的"存为我的常用方""另存为协定处方"）
+model TemplatePrescription {
+  id            String  @id @default(uuid())
+  kind          String  @default("favorite") // favorite（我的常用方） | agreed（协定处方）
+  name          String
+  formulaName   String? @map("formula_name")
+  formulaSource String? @map("formula_source")
+  compositionJson String @map("composition_json")
+  usageText     String? @map("usage_text")
+  note          String?
+  createdBy     String? @map("created_by")
+  createdAt     String  @map("created_at")
+
+  items TemplateItem[]
+
+  @@map("template_prescriptions")
+}
+
+model TemplateItem {
+  id           String  @id @default(uuid())
+  templateId   String  @map("template_id")
+  herbName     String  @map("herb_name")
+  dose         String?
+  doseValue    Float?  @map("dose_value")
+  doseUnit     String? @map("dose_unit")
+  sortNo       Int     @map("sort_no")
+
+  template TemplatePrescription @relation(fields: [templateId], references: [id])
+
+  @@map("template_items")
+}
+
+// 问诊要点词表（R2 标签词表按使用频次排序取前 12）
+model SymptomTerm {
+  id        String @id @default(uuid())
+  term      String
+  normTerm  String @unique @map("norm_term")
+  useCount  Int    @default(0) @map("use_count")
+  createdAt String @map("created_at")
+
+  @@map("symptom_terms")
+}
+
+// 十八反 / 十九畏（R2 配伍提示，只提示不拦截）
+model HerbIncompatibility {
+  id    String @id @default(uuid())
+  herbA String @map("herb_a")
+  herbB String @map("herb_b")
+  rule  String // 十八反 | 十九畏
+
+  @@index([herbA])
+  @@map("herb_incompatibilities")
+}
+
+// 系统设置（备份保留天数等由医生自己设置）
+model Setting {
+  key       String @id
+  value     String
+  updatedAt String @map("updated_at")
+
+  @@map("settings")
+}

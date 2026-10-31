@@ -1,0 +1,262 @@
+@import "tailwindcss";
+
+/* ——————————————————————————————
+   中医诊疗工作台 · 设计 token
+   米白 + 墨绿，纸感、安静、可长时间阅读
+   —————————————————————————————— */
+@theme {
+  --color-canvas: #f5f2ec;
+  --color-surface: #ffffff;
+  --color-rail: #222925;
+  --color-panel: #fbfaf6;
+  --color-brand: #2f5d50;
+  --color-brand-soft: #e7efe9;
+  --color-accent: #f8ede6;
+  --color-accent-ink: #7a4a33;
+  --color-ink: #23221f;
+  --color-ink-2: #5c5a53;
+  --color-ink-3: #8b887e;
+  --color-ink-4: #a6a196;
+  --color-line: #e4e0d5;
+  --color-line-2: #e6e2d7;
+  --color-ghost: #f5f1e7;
+  --color-footer: #faf8f2;
+  --color-danger: #b4452f;
+  --color-ochre: #f2e7cc;
+
+  --font-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui,
+    sans-serif;
+  --font-serif: "Noto Serif SC", "Songti SC", "SimSun", "Times New Roman", serif;
+
+  --radius-card: 10px;
+  --radius-input: 8px;
+  --radius-tag: 6px;
+  --radius-overlay: 14px;
+
+  --shadow-card: 0 1px 2px rgba(35, 34, 31, 0.04);
+  --shadow-pop: 0 18px 48px rgba(35, 34, 31, 0.16), 0 2px 8px rgba(35, 34, 31, 0.06);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  ::selection {
+    background: var(--color-ochre);
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* 中医工作台是长时间阅读的界面，滚动条收窄、去掉突兀的圆角 */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d9d4c8;
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #c7c1b3;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .card-flat {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-card);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: var(--radius-input);
+    font-size: 13px;
+    line-height: 1;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--color-brand);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #274f44;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--color-ink-2);
+    border: 1px solid var(--color-line);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--color-ghost);
+    color: var(--color-ink);
+  }
+
+  .btn-quiet {
+    background: transparent;
+    color: var(--color-ink-2);
+  }
+  .btn-quiet:hover:not(:disabled) {
+    background: var(--color-ghost);
+    color: var(--color-ink);
+  }
+
+  .input {
+    width: 100%;
+    height: 36px;
+    padding: 0 11px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-input);
+    font-size: 13.5px;
+    color: var(--color-ink);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .input::placeholder {
+    color: var(--color-ink-4);
+  }
+  .input:hover:not(:disabled):not(:focus) {
+    border-color: #d8d3c6;
+  }
+  .input:focus {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px rgba(47, 93, 80, 0.1);
+    outline: none;
+  }
+  .input[aria-invalid="true"] {
+    border-color: var(--color-danger);
+  }
+  .input[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 3px rgba(180, 69, 47, 0.1);
+  }
+
+  .textarea {
+    width: 100%;
+    padding: 9px 11px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-input);
+    font-size: 13.5px;
+    line-height: 26px;
+    color: var(--color-ink);
+    resize: vertical;
+  }
+  .textarea:focus {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px rgba(47, 93, 80, 0.1);
+    outline: none;
+  }
+  .textarea[aria-invalid="true"] {
+    border-color: var(--color-danger);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 9px;
+    border-radius: var(--radius-tag);
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+    color: var(--color-ink-2);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .chip-brand {
+    background: var(--color-brand-soft);
+    border-color: #d3e2d8;
+    color: var(--color-brand);
+  }
+  .chip-accent {
+    background: var(--color-accent);
+    border-color: #f0dbcd;
+    color: var(--color-accent-ink);
+  }
+  .chip-danger {
+    background: #fbeeea;
+    border-color: #f2d5cd;
+    color: var(--color-danger);
+  }
+
+  .field-label {
+    display: block;
+    font-size: 12px;
+    color: var(--color-ink-3);
+    margin-bottom: 5px;
+    letter-spacing: 0.02em;
+  }
+
+  .field-error {
+    margin-top: 5px;
+    font-size: 12px;
+    color: var(--color-danger);
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-ink);
+    letter-spacing: 0.02em;
+  }
+
+  .muted {
+    color: var(--color-ink-3);
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}
