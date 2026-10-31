@@ -1,0 +1,161 @@
+@page {
+  size: A5 portrait;
+  margin: 9mm 10mm;
+}
+
+/* 打印页不用应用外壳，独立排版；屏幕预览时给一层纸感背景 */
+.print-page {
+  min-height: 100vh;
+  background: #e9e6df;
+  padding: 24px 0 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.print-toolbar {
+  width: 148mm;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sheet {
+  width: 148mm;
+  min-height: 200mm;
+  box-sizing: border-box;
+  background: #fff;
+  color: #1d1b18;
+  padding: 10mm 10mm 12mm;
+  box-shadow:
+    0 10px 30px rgba(35, 34, 31, 0.14),
+    0 1px 3px rgba(35, 34, 31, 0.08);
+  font-family:
+    "Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.sheet .clinic {
+  text-align: center;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
+  font-size: 17px;
+  letter-spacing: 0.28em;
+  padding-bottom: 6px;
+}
+
+.sheet .clinic-sub {
+  text-align: center;
+  font-size: 11px;
+  color: #6d6960;
+  letter-spacing: 0.32em;
+  padding-bottom: 9px;
+  border-bottom: 1.4px solid #1d1b18;
+}
+
+.sheet .meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #4a463f;
+  padding: 7px 0 3px;
+}
+
+.sheet .patient {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+  padding: 2px 0 6px;
+  border-bottom: 1px dashed #cfcabf;
+}
+
+.sheet .patient b {
+  font-weight: 600;
+}
+
+.sheet .diagnosis {
+  font-size: 12px;
+  padding: 6px 0;
+  line-height: 1.75;
+}
+
+.sheet .diagnosis .k {
+  color: #6d6960;
+  margin-right: 4px;
+}
+
+.sheet .rx-title {
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
+  font-size: 15px;
+  letter-spacing: 0.34em;
+  margin: 6px 0 4px;
+}
+
+.sheet .rx-grid {
+  columns: 2;
+  column-gap: 12mm;
+  border-top: 1px solid #1d1b18;
+  border-bottom: 1px solid #1d1b18;
+  padding: 6px 0 8px;
+}
+
+.sheet .rx-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  line-height: 22px;
+  padding-right: 2mm;
+  break-inside: avoid;
+}
+
+.sheet .rx-item .name {
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
+  font-size: 12px;
+}
+
+.sheet .usage {
+  font-size: 11.5px;
+  line-height: 1.95;
+  padding-top: 6px;
+}
+
+.sheet .advice {
+  font-size: 11.5px;
+  line-height: 1.9;
+  color: #33302a;
+  white-space: pre-wrap;
+  padding-top: 2px;
+}
+
+.sheet .sign {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #33302a;
+}
+
+.sheet .foot {
+  margin-top: 10px;
+  border-top: 1px dashed #cfcabf;
+  padding-top: 5px;
+  font-size: 9.5px;
+  color: #8a857b;
+  line-height: 1.7;
+}
+
+@media print {
+  .print-page {
+    background: #fff;
+    padding: 0;
+    display: block;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .sheet {
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+}

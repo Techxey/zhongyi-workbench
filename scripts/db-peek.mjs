@@ -1,10 +1,17 @@
 import { PrismaClient } from "@prisma/client";
-const p = new PrismaClient();
-const ps = await p.patient.findMany({
-  select: { id: true, name: true, phone: true, createdAt: true },
+
+const prisma = new PrismaClient();
+
+const patients = await prisma.patient.findMany({
+  select: { id: true, name: true, createdAt: true, _count: { select: { visits: true } } },
   orderBy: { createdAt: "asc" },
 });
-console.log("patients:", ps.length);
-for (const x of ps) console.log(String(x.createdAt), x.name, x.phone, x.id);
-console.log("visits:", await p.visit.count(), "revisions:", await p.visitRevision.count());
-await p.$disconnect();
+console.log(patients.map((p) => `${p.id} ${p.name} visits=${p._count.visits} ${p.createdAt}`).join("\n"));
+
+const visits = await prisma.visit.findMany({
+  select: { id: true, patientId: true, visitNo: true, status: true },
+  orderBy: { visitAt: "asc" },
+});
+console.log(visits.map((v) => `${v.id} p=${v.patientId.slice(0, 8)} no=${v.visitNo} ${v.status}`).join("\n"));
+
+await prisma.$disconnect();

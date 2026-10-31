@@ -72,6 +72,7 @@ model VisitRevision {
   treatment        String?
   advice           String?
   followupDays     Int?    @map("followup_days")
+  remindFollowup   Boolean @default(true) @map("remind_followup")
   amendedReason    String? @map("amended_reason")
   operatorId       String  @map("operator_id")
   createdAt        String  @map("created_at")

@@ -316,6 +316,7 @@
     color: var(--c-ink-2);
     font-size: 12px;
     white-space: nowrap;
+    cursor: pointer;
   }
   .chip-brand {
     background: var(--c-brand-soft);
@@ -360,5 +361,23 @@
 
   .num {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* 接诊台：主诉一行 16px Medium，比普通输入更醒目 */
+  .consult-input-lg {
+    height: 44px;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+  .consult-input-lg::placeholder {
+    font-weight: 400;
+  }
+
+  /* 接诊台标签比列表里的 chip 大一号，手指和眼睛都更容易落点 */
+  .chip-lg {
+    height: 28px;
+    padding: 0 11px;
+    font-size: 12.5px;
   }
 }

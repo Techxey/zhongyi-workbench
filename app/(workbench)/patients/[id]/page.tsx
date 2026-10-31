@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { TopBar } from "@/components/topbar";
 import { ageOf, formatDate, genderLabel, truncate } from "@/lib/format";
 import { PatientInfoCard, type PatientDetail } from "./patient-info-card";
+import { startVisit } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,8 @@ export default async function PatientDetailPage({
     };
   });
 
+  const draftVisit = patient.visits.find((visit) => visit.status === "draft") ?? null;
+
   const detail: PatientDetail = {
     id: patient.id,
     name: patient.name,
@@ -93,9 +96,16 @@ export default async function PatientDetailPage({
           </span>
         }
         actions={
-          <Link href="/patients" className="btn btn-ghost">
-            返回列表
-          </Link>
+          <>
+            <Link href="/patients" className="btn btn-ghost">
+              返回列表
+            </Link>
+            <form action={startVisit.bind(null, patient.id)}>
+              <button type="submit" className="btn btn-primary">
+                {draftVisit ? "继续接诊" : "开始接诊"}
+              </button>
+            </form>
+          </>
         }
       />
 
@@ -115,9 +125,14 @@ export default async function PatientDetailPage({
               {timeline.length === 0 ? (
                 <div className="mx-4 my-4 border border-dashed border-line rounded-[10px] px-6 py-12 text-center">
                   <p className="font-serif text-[15px] text-ink mb-1.5">还没有就诊记录</p>
-                  <p className="text-[12.5px] text-ink-3 leading-relaxed max-w-[380px] mx-auto">
-                    接诊台在下一轮上线。届时每次就诊会在这里留下日期、主诉、证型与方名，点开即可续诊。
+                  <p className="text-[12.5px] text-ink-3 leading-relaxed max-w-[400px] mx-auto">
+                    这次接诊会在这里留下日期、主诉、证型与方名，点开即可续诊；病历提交后不可原地改，只能新增修订版。
                   </p>
+                  <form action={startVisit.bind(null, patient.id)} className="mt-4">
+                    <button type="submit" className="btn btn-primary">
+                      开始接诊
+                    </button>
+                  </form>
                 </div>
               ) : (
                 <ul>
