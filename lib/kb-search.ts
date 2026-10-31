@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { pinyinOf } from "@/lib/format";
 import { parseComposition, type KbItemType } from "@/lib/kb";
+import { enrichClassicSnippets, parseClassicMeta, searchClassicText, type ClassicSearchHit } from "@/lib/kb-classic";
 
 /**
  * 知识库检索：内存倒排 + 别名归一 + 可解释排序。
@@ -27,6 +28,12 @@ export type KbSearchDoc = {
   version: number;
   usageCount: number;
   completeness: number;
+  /** 古籍专用轻元数据：简介 / 字数（去空白） / 章节数；正文永远不进内存索引 */
+  intro?: string;
+  chars?: number;
+  chapters?: number;
+  /** 全文命中片段（只有古籍、且正文里命中了检索词时才有） */
+  snippet?: string;
 };
 
 export type KbIntent = {
@@ -73,8 +80,26 @@ export async function loadKbIndex(force = false): Promise<Index> {
 
   const [items, usage] = await Promise.all([
     prisma.kbItem.findMany({
-      include: {
-        versions: { orderBy: { version: "desc" }, take: 1 },
+      // 古籍正文 170MB 全在 kb_item_versions.rawJson，这里必须显式 select，
+      // 否则光一次索引就会把整库正文读进内存。
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        source: true,
+        status: true,
+        versions: {
+          orderBy: { version: "desc" },
+          take: 1,
+          select: {
+            version: true,
+            efficacy: true,
+            indication: true,
+            usageText: true,
+            compositionJson: true,
+            commentary: true,
+          },
+        },
         aliases: true,
       },
     }),
@@ -97,6 +122,8 @@ export async function loadKbIndex(force = false): Promise<Index> {
       const parts = parseComposition(version?.compositionJson ?? null);
       const completeness =
         (item.source ? 1 : 0) + (parts.length > 0 ? 1 : 0) + (version?.usageText ? 1 : 0);
+      const isClassic = item.type === "classic";
+      const classicMeta = isClassic ? parseClassicMeta(version?.commentary ?? null) : null;
       return {
         id: item.id,
         type: (item.type as KbItemType) ?? "formula",
@@ -112,6 +139,13 @@ export async function loadKbIndex(force = false): Promise<Index> {
         version: version?.version ?? 1,
         usageCount: usageMap.get(item.id) ?? 0,
         completeness,
+        ...(classicMeta
+          ? {
+              intro: version?.indication ?? "",
+              chars: classicMeta.chars,
+              chapters: classicMeta.chapters,
+            }
+          : {}),
       };
     });
 
@@ -234,7 +268,89 @@ function overlapOf(doc: KbSearchDoc, terms: string[]): number {
 export type KbSearchContext = {
   symptoms?: string[];
   syndrome?: string | null;
+  /** true 时强制做一次古籍正文检索（Ctrl+K 搜条文）；否则只在古籍命中不足 6 部时补一次 */
+  deep?: boolean;
 };
+
+/** 正文命中的加权：略高于「简介命中」（tier 30 折合 30000 分） */
+const BODY_HIT_BONUS = 500;
+
+/**
+ * 古籍正文命中：SQLite 的 instr 扫 raw_json，不在内存索引里做。
+ * 分两步（都在 lib/kb-classic.ts 里）：
+ * 1) 给书名/简介已经命中的前 10 部书补正文片段（按 id 查，几毫秒）；
+ * 2) 再做一次「正文检索」发现只在正文里出现的书（限量 6 条，按书名顺序命中即停）。
+ * 命中片段挂到 classics 页签的 hit.snippet 上。
+ */
+async function mergeClassicTextHits(tabs: Record<KbItemType, KbTabResult>, query: string) {
+  const needle = normalize(query);
+  if (needle.length < 2) return;
+
+  const candidates = tabs.classic.hits.slice(0, 10);
+  let merged: ClassicSearchHit[] = [];
+  try {
+    const [enriched, globalHits] = await Promise.all([
+      enrichClassicSnippets(query.trim(), candidates.map((hit) => hit.id)),
+      searchClassicText(query.trim(), 6),
+    ]);
+    merged = [...enriched, ...globalHits];
+  } catch {
+    return;
+  }
+  if (merged.length === 0) return;
+
+  const pending = new Map<string, ClassicSearchHit>();
+  for (const textHit of merged) {
+    if (!pending.has(textHit.itemId)) pending.set(textHit.itemId, textHit);
+  }
+
+  for (const hit of tabs.classic.hits) {
+    const textHit = pending.get(hit.id);
+    if (!textHit) continue;
+    pending.delete(hit.id);
+    if (!hit.snippet) {
+      hit.snippet = textHit.snippet;
+      // 正文命中比「简介里恰好含关键词」更可信，提到本页签前列
+      hit.score += BODY_HIT_BONUS;
+      if (hit.reason !== "名称一致" && hit.reason !== "名称前缀" && hit.reason !== "名称包含") {
+        hit.reason = "正文命中";
+      }
+    }
+  }
+
+  for (const textHit of pending.values()) {
+    tabs.classic.hits.push({
+      id: textHit.itemId,
+      type: "classic",
+      name: textHit.name,
+      source: textHit.source,
+      aliases: [],
+      herbNames: [],
+      components: [],
+      herbCount: 0,
+      efficacy: "",
+      indication: textHit.intro,
+      usageText: "",
+      version: 1,
+      usageCount: 0,
+      completeness: 0,
+      intro: textHit.intro,
+      chars: textHit.chars,
+      chapters: textHit.chapters,
+      snippet: textHit.snippet,
+      score: 30000 + BODY_HIT_BONUS,
+      overlap: 0,
+      reason: "正文命中",
+    });
+    tabs.classic.matched += 1;
+  }
+
+  tabs.classic.hits.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.name.localeCompare(b.name, "zh");
+  });
+  tabs.classic.hits = tabs.classic.hits.slice(0, 20);
+}
 
 export async function searchKb(query: string, context: KbSearchContext = {}): Promise<KbSearchResponse> {
   const index = await loadKbIndex();
@@ -277,6 +393,13 @@ export async function searchKb(query: string, context: KbSearchContext = {}): Pr
       return a.name.localeCompare(b.name, "zh");
     });
     tabs[key].hits = tabs[key].hits.slice(0, 20);
+  }
+
+  // 古籍正文检索：搜条文（如「太阳之为病」）时书名/简介往往不命中，必须再扫一遍正文。
+  // 不论书名命中多少都补一次（SQL 只扫前 3 万字、返回 8 条，热查询约 100ms），
+  // 否则「简介里恰好出现关键词的 20 部书」会把正文片段挤掉。
+  if (query.trim().length >= 2) {
+    await mergeClassicTextHits(tabs, query);
   }
 
   return {

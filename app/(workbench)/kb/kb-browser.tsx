@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { formatDateTime } from "@/lib/format";
 import { saveKbVersion, toggleKbItem } from "./actions";
@@ -32,6 +32,10 @@ export type KbRow = {
   herbNames: string[];
   efficacy: string;
   indication: string;
+  /** 古籍：简介（正文前 200 字）、字数（去空白）、章节数 */
+  intro?: string;
+  chars?: number;
+  chapters?: number;
   versions: KbVersionRow[];
 };
 
@@ -59,6 +63,7 @@ export type KbBatchRow = {
 const TABS = [
   { key: "formula", label: "方剂", unit: "首" },
   { key: "herb", label: "中药", unit: "味" },
+  { key: "classic", label: "古籍", unit: "部" },
   { key: "alias", label: "别名", unit: "条" },
 ] as const;
 
@@ -68,6 +73,13 @@ const ALIAS_LABEL: Record<string, string> = {
   symptom: "症状词",
   syndrome: "证型词",
 };
+
+/** 古籍字数展示：3.7 万字 */
+function formatChars(chars: number | undefined): string {
+  if (!chars) return "—";
+  if (chars >= 10000) return `${(chars / 10000).toFixed(1)} 万字`;
+  return `${chars} 字`;
+}
 
 export function KbBrowser({
   items,
@@ -86,12 +98,17 @@ export function KbBrowser({
   const [editing, setEditing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
+  const [visible, setVisible] = useState(120);
 
   const sources = useMemo(() => {
+    if (tab === "alias" || tab === "classic") return ["all"];
     const set = new Set<string>();
-    for (const item of items) if (item.source) set.add(item.source);
+    for (const item of items) {
+      if (item.type !== tab || !item.source) continue;
+      set.add(item.source);
+    }
     return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b, "zh"))];
-  }, [items]);
+  }, [items, tab]);
 
   const scoped = useMemo(() => {
     const type = tab === "alias" ? null : tab;
@@ -106,6 +123,12 @@ export function KbBrowser({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return scoped;
+    // 古籍页签按任务要求只按书名/作者筛选，避免「简介里出现关键词」把不相干的书混进来
+    if (tab === "classic") {
+      return scoped.filter(
+        (item) => item.name.toLowerCase().includes(q) || (item.source ?? "").toLowerCase().includes(q),
+      );
+    }
     return scoped.filter(
       (item) =>
         item.name.toLowerCase().includes(q) ||
@@ -113,9 +136,10 @@ export function KbBrowser({
         item.aliases.some((alias) => alias.toLowerCase().includes(q)) ||
         item.herbNames.some((herb) => herb.toLowerCase().includes(q)) ||
         item.indication.toLowerCase().includes(q) ||
+        (item.intro ?? "").toLowerCase().includes(q) ||
         item.efficacy.toLowerCase().includes(q),
     );
-  }, [scoped, query]);
+  }, [scoped, query, tab]);
 
   const filteredAliases = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -132,6 +156,7 @@ export function KbBrowser({
     () => ({
       formula: items.filter((item) => item.type === "formula").length,
       herb: items.filter((item) => item.type === "herb").length,
+      classic: items.filter((item) => item.type === "classic").length,
       alias: aliases.length,
     }),
     [items, aliases],
@@ -155,12 +180,15 @@ export function KbBrowser({
       <div className="flex items-center gap-2">
         <input
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜方名、药名、别名、功效…"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setVisible(120);
+          }}
+          placeholder={tab === "classic" ? "搜书名（如 伤寒论、本草纲目）…" : "搜方名、药名、别名、功效…"}
           className="input w-[320px]"
           aria-label="知识库搜索"
         />
-        {tab !== "alias" ? (
+        {tab !== "alias" && tab !== "classic" ? (
           <>
             <select
               value={source}
@@ -183,12 +211,27 @@ export function KbBrowser({
             </button>
           </>
         ) : null}
+        {tab === "classic" ? (
+          <button
+            type="button"
+            className={`btn ${statusFilter === "active" ? "btn-ghost" : "btn-quiet"} h-[34px]`}
+            onClick={() => setStatusFilter(statusFilter === "active" ? "all" : "active")}
+          >
+            {statusFilter === "active" ? "只看在用" : "含已停用"}
+          </button>
+        ) : null}
         <span className="ml-auto text-[11.5px] text-ink-4">
-          {tab === "alias" ? `${filteredAliases.length} 条别名` : `${filtered.length} 条`}
+          {tab === "alias"
+            ? `${filteredAliases.length} 条别名`
+            : tab === "classic"
+              ? `${filtered.length} 部`
+              : `${filtered.length} 条`}
         </span>
-        <Link href="/kb/import" className="btn btn-primary h-[34px]">
-          导入 CSV
-        </Link>
+        {tab === "classic" ? null : (
+          <Link href="/kb/import" className="btn btn-primary h-[34px]">
+            导入 CSV
+          </Link>
+        )}
       </div>
 
       {/* 页签 */}
@@ -201,6 +244,8 @@ export function KbBrowser({
               type="button"
               onClick={() => {
                 setTab(entry.key);
+                setSource("all");
+                setVisible(120);
                 setSelected(null);
               }}
               className={`relative h-[38px] text-[13px] transition-colors ${
@@ -269,10 +314,14 @@ export function KbBrowser({
           <table className="w-full border-collapse">
             <thead>
               <tr className="text-left text-[12px] text-ink-3">
-                <th className="font-normal px-4 h-10 border-b border-line-2 w-[26%]">名称</th>
-                <th className="font-normal px-4 h-10 border-b border-line-2 w-[16%]">出处</th>
                 <th className="font-normal px-4 h-10 border-b border-line-2 w-[26%]">
-                  {tab === "formula" ? "味数 · 功效" : "功效"}
+                  {tab === "classic" ? "书名" : "名称"}
+                </th>
+                <th className="font-normal px-4 h-10 border-b border-line-2 w-[16%]">
+                  {tab === "classic" ? "作者" : "出处"}
+                </th>
+                <th className="font-normal px-4 h-10 border-b border-line-2 w-[26%]">
+                  {tab === "classic" ? "字数 · 章节" : tab === "formula" ? "味数 · 功效" : "功效"}
                 </th>
                 <th className="font-normal px-4 h-10 border-b border-line-2 w-[10%]">版本</th>
                 <th className="font-normal px-4 h-10 border-b border-line-2 w-[14%]">更新时间</th>
@@ -280,7 +329,7 @@ export function KbBrowser({
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, 300).map((item) => (
+              {filtered.slice(0, visible).map((item) => (
                 <tr
                   key={item.id}
                   className={`border-b border-line-2 last:border-b-0 hover:bg-ghost cursor-pointer ${
@@ -298,10 +347,16 @@ export function KbBrowser({
                     ) : null}
                   </td>
                   <td className="px-4 py-2 text-[12.5px] text-ink-2">{item.source ?? "—"}</td>
-                  <td className="px-4 py-2 text-[12.5px] text-ink-2 truncate max-w-[300px]">
-                    {tab === "formula" ? `${item.herbCount} 味 · ` : ""}
-                    {item.efficacy || item.indication || "—"}
-                  </td>
+                  {tab === "classic" ? (
+                    <td className="px-4 py-2 text-[12.5px] text-ink-2 truncate max-w-[300px]">
+                      {formatChars(item.chars)} · {item.chapters ? `${item.chapters} 章` : "—"}
+                    </td>
+                  ) : (
+                    <td className="px-4 py-2 text-[12.5px] text-ink-2 truncate max-w-[300px]">
+                      {tab === "formula" ? `${item.herbCount} 味 · ` : ""}
+                      {item.efficacy || item.indication || "—"}
+                    </td>
+                  )}
                   <td className="px-4 py-2 text-[12.5px] text-ink-2 num">v{item.currentVersion}</td>
                   <td className="px-4 py-2 text-[12px] text-ink-3 num">{formatDateTime(item.updatedAt)}</td>
                   <td className="px-4 py-2">
@@ -315,6 +370,20 @@ export function KbBrowser({
               ))}
             </tbody>
           </table>
+          {filtered.length > visible ? (
+            <div className="px-4 py-3 border-t border-line-2 flex items-center justify-between">
+              <span className="text-[11.5px] text-ink-4">
+                已显示 {visible} / {filtered.length} 条
+              </span>
+              <button
+                type="button"
+                className="btn btn-quiet h-[30px]"
+                onClick={() => setVisible((current) => current + 120)}
+              >
+                显示更多
+              </button>
+            </div>
+          ) : null}
         </section>
       )}
 
@@ -366,6 +435,151 @@ export function KbBrowser({
   );
 }
 
+type ClassicChapterRow = { title: string; text: string };
+
+type ClassicBookRow = {
+  id: string;
+  name: string;
+  source: string | null;
+  intro: string;
+  chars: number;
+  chapters: ClassicChapterRow[];
+};
+
+/** 古籍详情：简介 + 章节列表（可展开看条文），通过 /api/kb/search?id= 取正文 */
+function ClassicDetailBody({ item, busy, onToggle }: { item: KbRow; busy: boolean; onToggle: () => void }) {
+  const [book, setBook] = useState<ClassicBookRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [openChapter, setOpenChapter] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    setBook(null);
+    setOpenChapter(null);
+    fetch(`/api/kb/search?id=${encodeURIComponent(item.id)}`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (!alive) return;
+        if (data?.ok && data.book) setBook(data.book as ClassicBookRow);
+        else setError(data?.message ?? "读取古籍失败");
+      })
+      .catch(() => {
+        if (alive) setError("读取古籍失败");
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [item.id]);
+
+  const chapters = book?.chapters ?? [];
+  const intro = item.intro || book?.intro || "";
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-3 text-[13px]">
+        {intro ? <Field label="简介" value={intro} serif /> : null}
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <p className="text-[11.5px] text-ink-4 mb-0.5">全书字数</p>
+            <p className="text-ink-2 num">{formatChars(item.chars ?? book?.chars)}</p>
+          </div>
+          <div>
+            <p className="text-[11.5px] text-ink-4 mb-0.5">章节</p>
+            <p className="text-ink-2 num">{chapters.length > 0 ? `${chapters.length} 章` : (item.chapters ? `${item.chapters} 章` : "—")}</p>
+          </div>
+          <div>
+            <p className="text-[11.5px] text-ink-4 mb-0.5">状态</p>
+            <p className="text-ink-2">{item.status === "disabled" ? "已停用" : "在用"}</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="section-title">章节条文</h3>
+          {book ? <span className="text-[11.5px] text-ink-4">点击章节展开全文</span> : null}
+        </div>
+        {loading ? <p className="text-[12.5px] text-ink-3">正在读取正文…</p> : null}
+        {error ? <p className="text-[12.5px] text-danger">{error}</p> : null}
+        {!loading && !error ? (
+          chapters.length === 0 ? (
+            <p className="text-[12.5px] text-ink-3">这本书没有可读的章节内容。</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {chapters.map((chapter, index) => {
+                const opened = openChapter === index;
+                return (
+                  <li key={`${index}-${chapter.title}`} className="border border-line-2 rounded-[8px]">
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 flex items-center justify-between text-left"
+                      onClick={() => setOpenChapter(opened ? null : index)}
+                    >
+                      <span className="font-serif text-[13.5px] text-ink truncate max-w-[380px]">
+                        {chapter.title || `第 ${index + 1} 章`}
+                      </span>
+                      <span className="text-[11px] text-ink-4 shrink-0 ml-2">
+                        {opened ? "收起" : `${chapter.text.length} 字`}
+                      </span>
+                    </button>
+                    {opened ? (
+                      <div className="px-3 pb-3 max-h-[420px] overflow-y-auto">
+                        <p className="text-[13px] text-ink-2 leading-relaxed font-serif whitespace-pre-line">
+                          {chapter.text}
+                        </p>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className={`btn btn-ghost flex-1 ${item.status === "disabled" ? "text-brand" : "text-danger"}`}
+          onClick={onToggle}
+          disabled={busy}
+        >
+          {item.status === "disabled" ? "重新启用" : "停用（不删除）"}
+        </button>
+      </div>
+
+      <div>
+        <h3 className="section-title mb-2">版本历史</h3>
+        <ul className="space-y-1.5">
+          {item.versions.map((version) => (
+            <li
+              key={version.version}
+              className="px-3 py-2 border border-line-2 rounded-[8px] text-[12px] text-ink-2"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-ink">
+                  v{version.version}
+                  {version.version === item.currentVersion ? (
+                    <span className="ml-1.5 text-[11px] text-brand">当前</span>
+                  ) : null}
+                </span>
+                <span className="text-ink-4 num">{formatDateTime(version.createdAt)}</span>
+              </div>
+              <div className="text-ink-4">来源：{version.batchName}</div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function KbDetail({
   item,
   editing,
@@ -399,7 +613,9 @@ function KbDetail({
           <div>
             <h2 className="font-serif text-[17px] text-ink">{item.name}</h2>
             <p className="text-[11.5px] text-ink-4">
-              {item.source ?? "出处未标"} · v{item.currentVersion} · 被引用 {item.usageCount} 次
+              {item.source ?? "出处未标"}
+              {item.type === "classic" ? ` · ${formatChars(item.chars)}` : ""} · v{item.currentVersion} · 被引用{" "}
+              {item.usageCount} 次
             </p>
           </div>
           <button type="button" className="btn btn-quiet h-[30px]" onClick={onClose}>
@@ -408,7 +624,9 @@ function KbDetail({
         </div>
 
         <div className="p-5 space-y-4">
-          {editing ? (
+          {item.type === "classic" ? (
+            <ClassicDetailBody item={item} busy={busy} onToggle={onToggle} />
+          ) : editing ? (
             <form
               className="space-y-3"
               action={(formData) => {

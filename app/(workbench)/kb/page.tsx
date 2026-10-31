@@ -4,6 +4,7 @@ import { TopBar } from "@/components/topbar";
 import { KbSearchTrigger } from "@/components/kb-search-overlay";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { parseClassicMeta } from "@/lib/kb-classic";
 import { parseComposition } from "@/lib/kb";
 import { KbBrowser, type KbAliasRow, type KbBatchRow, type KbRow } from "./kb-browser";
 
@@ -19,9 +20,29 @@ export default async function KbPage() {
   const [items, batches, usage, aliases] = await Promise.all([
     prisma.kbItem.findMany({
       orderBy: [{ type: "asc" }, { name: "asc" }],
-      include: {
-        versions: { orderBy: { version: "desc" } },
-        aliases: { orderBy: { term: "asc" } },
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        source: true,
+        status: true,
+        currentVersion: true,
+        updatedAt: true,
+        versions: {
+          orderBy: { version: "desc" },
+          select: {
+            version: true,
+            createdAt: true,
+            compositionJson: true,
+            efficacy: true,
+            indication: true,
+            usageText: true,
+            contraindication: true,
+            commentary: true,
+            batchId: true,
+          },
+        },
+        aliases: { orderBy: { term: "asc" }, select: { term: true } },
       },
     }),
     prisma.kbImportBatch.findMany({ orderBy: { createdAt: "desc" }, take: 20 }),
@@ -45,6 +66,7 @@ export default async function KbPage() {
   const rows: KbRow[] = items.map((item) => {
     const latest = item.versions[0];
     const parts = parseComposition(latest?.compositionJson ?? null);
+    const classicMeta = item.type === "classic" ? parseClassicMeta(latest?.commentary ?? null) : null;
     return {
       id: item.id,
       type: item.type,
@@ -59,6 +81,9 @@ export default async function KbPage() {
       herbNames: parts.map((part) => part.name),
       efficacy: latest?.efficacy ?? "",
       indication: latest?.indication ?? "",
+      intro: classicMeta ? (latest?.indication ?? "") : undefined,
+      chars: classicMeta?.chars,
+      chapters: classicMeta?.chapters,
       versions: item.versions.map((version) => ({
         version: version.version,
         createdAt: version.createdAt,

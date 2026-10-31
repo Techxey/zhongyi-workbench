@@ -20,7 +20,29 @@ type Hit = {
   usageCount: number;
   overlap: number;
   reason: string;
+  /** 古籍：简介、字数、章节数、正文命中片段 */
+  intro?: string;
+  chars?: number;
+  chapters?: number;
+  snippet?: string;
 };
+
+type ClassicChapter = { title: string; text: string };
+
+type ClassicBook = {
+  id: string;
+  name: string;
+  source: string | null;
+  intro: string;
+  chars: number;
+  chapters: ClassicChapter[];
+};
+
+function formatChars(chars: number | undefined): string {
+  if (!chars) return "";
+  if (chars >= 10000) return `${(chars / 10000).toFixed(1)} 万字`;
+  return `${chars} 字`;
+}
 
 type SearchResult = {
   query: string;
@@ -128,8 +150,42 @@ export function KbSearchOverlay() {
   const current = result.tabs[tab] ?? { hits: [], matched: 0 };
   const hits = current.hits;
 
+  // 古籍展开：拉取正文（章节标题 + 该章前 200 字）
+  const [book, setBook] = useState<ClassicBook | null>(null);
+  const [bookError, setBookError] = useState<string | null>(null);
+  const expandedClassicId = tab === "classic" && expanded && hits.some((hit) => hit.id === expanded) ? expanded : null;
+
+  useEffect(() => {
+    if (!expandedClassicId) {
+      setBook(null);
+      setBookError(null);
+      return;
+    }
+    let alive = true;
+    setBook(null);
+    setBookError(null);
+    fetch(`/api/kb/search?id=${encodeURIComponent(expandedClassicId)}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!alive) return;
+        if (data?.ok && data.book) setBook(data.book as ClassicBook);
+        else setBookError(data?.message ?? "读取条文失败");
+      })
+      .catch(() => {
+        if (alive) setBookError("读取条文失败");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [expandedClassicId]);
+
   const insert = useCallback(
     (hit: Hit) => {
+      // 古籍不能带进处方：Enter 只展开条文
+      if (hit.type === "classic") {
+        setExpanded((value) => (value === hit.id ? null : hit.id));
+        return;
+      }
       const payload: KbInsertPayload = {
         type: hit.type === "herb" ? "herb" : "formula",
         name: hit.name,
@@ -239,7 +295,7 @@ export function KbSearchOverlay() {
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="输入方名、药名、症状或证型，如「失眠」「归脾」"
+            placeholder="输入方名、药名、书名、症状或证型，如「失眠」「伤寒论」「太阳之为病」"
             className="flex-1 bg-transparent outline-none text-[18px] text-ink placeholder:text-ink-4"
             aria-label="知识库检索输入"
             autoComplete="off"
@@ -317,7 +373,9 @@ export function KbSearchOverlay() {
               </p>
               <p className="text-[12px] text-ink-4">
                 {query.trim()
-                  ? "换个说法，或先到「知识库 → 导入」把这批方药导进来"
+                  ? tab === "classic"
+                    ? "换个书名，或直接搜条文关键字（如「太阳之为病」），会到正文里找"
+                    : "换个说法，或先到「知识库 → 导入」把这批方药导进来"
                   : "先到「知识库 → 导入」用 CSV 导入你的方剂与中药"}
               </p>
             </div>
@@ -339,42 +397,123 @@ export function KbSearchOverlay() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
                         <span className="font-serif text-[16px] text-ink">{hit.name}</span>
-                        {hit.aliases.length > 0 ? (
+                        {hit.type === "classic" ? (
+                          <span className="chip chip-brand !h-[20px] !text-[11px]">古籍</span>
+                        ) : hit.aliases.length > 0 ? (
                           <span className="text-[11.5px] text-ink-4 truncate">
                             {hit.aliases.slice(0, 2).join(" / ")}
                           </span>
+                        ) : null}
+                        {hit.snippet ? (
+                          <span className="chip chip-brand !h-[20px] !text-[11px]">正文命中</span>
                         ) : null}
                         {hit.overlap > 0 ? (
                           <span className="chip chip-brand !h-[20px] !text-[11px]">吻合 {hit.overlap} 项</span>
                         ) : null}
                       </div>
-                      <p className="mt-0.5 text-[11.5px] text-ink-4 truncate">
-                        {[
-                          hit.source || "出处未标",
-                          hit.type === "formula" ? `${hit.herbCount} 味` : "中药",
-                          hit.efficacy || hit.indication || "—",
-                          `v${hit.version}`,
-                          hit.usageCount > 0 ? `用过 ${hit.usageCount} 次` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
+                      {hit.type === "classic" ? (
+                        <>
+                          <p className="mt-0.5 text-[11.5px] text-ink-4 truncate">
+                            {[
+                              hit.source || "作者未标",
+                              formatChars(hit.chars),
+                              hit.chapters ? `${hit.chapters} 章` : null,
+                              `v${hit.version}`,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                          {hit.intro ? (
+                            <p className="mt-0.5 text-[12px] text-ink-3 truncate">{hit.intro}</p>
+                          ) : null}
+                          {hit.snippet ? (
+                            <p className="mt-1 text-[12.5px] text-ink-2 font-serif truncate">{hit.snippet}</p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className="mt-0.5 text-[11.5px] text-ink-4 truncate">
+                          {[
+                            hit.source || "出处未标",
+                            hit.type === "formula" ? `${hit.herbCount} 味` : "中药",
+                            hit.efficacy || hit.indication || "—",
+                            `v${hit.version}`,
+                            hit.usageCount > 0 ? `用过 ${hit.usageCount} 次` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      )}
                     </div>
                     <span className="shrink-0 self-center text-[11.5px] text-ink-4">
-                      {hit.type === "formula" ? "Enter 带入处方" : "Enter 带入"}
+                      {hit.type === "classic"
+                        ? isExpanded
+                          ? "Enter 收起"
+                          : "Enter 看条文"
+                        : hit.type === "formula"
+                          ? "Enter 带入处方"
+                          : "Enter 带入"}
                     </span>
                   </button>
                   {isExpanded ? (
-                    <div className="px-5 pb-3.5 -mt-1 text-[12px] text-ink-2 space-y-1">
-                      {hit.components.length > 0 ? (
-                        <p className="font-serif text-[13px] text-ink">
-                          {hit.components.map((part) => `${part.name}${part.dose}`).join("、")}
+                    hit.type === "classic" ? (
+                      <div className="px-5 pb-3.5 -mt-1 text-[12px] text-ink-2">
+                        <p className="text-[11px] text-ink-4 mb-1.5">条文 · 章节标题 + 该章前 200 字</p>
+                        {book ? (
+                          book.chapters.length === 0 ? (
+                            <p className="text-ink-3">这本书没有可读的章节。</p>
+                          ) : (
+                            (() => {
+                              const needle = result.query.trim();
+                              const matched = needle
+                                ? book.chapters.filter(
+                                    (chapter) => chapter.text.includes(needle) || chapter.title.includes(needle),
+                                  )
+                                : [];
+                              const list = matched.length > 0 ? matched : book.chapters;
+                              const shown = list.slice(0, 10);
+                              return (
+                                <>
+                                  {shown.map((chapter, chapterIndex) => (
+                                    <div key={`${chapterIndex}-${chapter.title}`} className="mb-2 last:mb-0">
+                                      <p className="font-serif text-[13px] text-ink">
+                                        {chapter.title || `第 ${chapterIndex + 1} 章`}
+                                      </p>
+                                      <p className="font-serif text-[12.5px] text-ink-2 leading-relaxed text-pretty">
+                                        {chapter.text.slice(0, 200)}
+                                        {chapter.text.length > 200 ? "…" : ""}
+                                      </p>
+                                    </div>
+                                  ))}
+                                  {list.length > shown.length ? (
+                                    <p className="text-[11px] text-ink-4 mt-1">
+                                      还有 {list.length - shown.length} 章 · 到「知识库 → 古籍」看全文
+                                    </p>
+                                  ) : null}
+                                </>
+                              );
+                            })()
+                          )
+                        ) : bookError ? (
+                          <p className="text-danger">{bookError}</p>
+                        ) : (
+                          <p className="text-ink-3">正在读取条文…</p>
+                        )}
+                        <p className="text-ink-4 mt-1.5">
+                          {hit.source ?? "作者未标"} · {formatChars(hit.chars)} · 第 {hit.version} 版
                         </p>
-                      ) : null}
-                      {hit.indication ? <p>主治：{hit.indication}</p> : null}
-                      {hit.usageText ? <p className="text-ink-3">用法：{hit.usageText}</p> : null}
-                      <p className="text-ink-4">{hit.source ?? "出处未标"} · 第 {hit.version} 版</p>
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="px-5 pb-3.5 -mt-1 text-[12px] text-ink-2 space-y-1">
+                        {hit.components.length > 0 ? (
+                          <p className="font-serif text-[13px] text-ink">
+                            {hit.components.map((part) => `${part.name}${part.dose}`).join("、")}
+                          </p>
+                        ) : null}
+                        {hit.indication ? <p>主治：{hit.indication}</p> : null}
+                        {hit.usageText ? <p className="text-ink-3">用法：{hit.usageText}</p> : null}
+                        <p className="text-ink-4">{hit.source ?? "出处未标"} · 第 {hit.version} 版</p>
+                      </div>
+                    )
                   ) : null}
                 </div>
               );
@@ -393,7 +532,9 @@ export function KbSearchOverlay() {
             {hint ? <span className="text-danger">{hint}</span> : null}
           </span>
           <span className="num">
-            知识库 v3 · 自建 · {result.index.formulas} 方 / {result.index.herbs} 药
+            {tab === "classic"
+              ? `知识库 v3 · 古籍 ${query.trim() ? current.matched : result.index.classics} 部`
+              : `知识库 v3 · 自建 · ${result.index.formulas} 方 / ${result.index.herbs} 药`}
           </span>
         </div>
       </div>
