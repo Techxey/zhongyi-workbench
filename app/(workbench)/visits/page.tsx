@@ -86,6 +86,9 @@ export default async function ClinicPage() {
         actions={
           <>
             <KbSearchTrigger />
+            <Link href="/records" className="btn btn-quiet">
+              整本病历
+            </Link>
             <Link href="/patients/new" className="btn btn-ghost">
               ＋ 新建患者
             </Link>

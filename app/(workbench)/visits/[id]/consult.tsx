@@ -30,7 +30,7 @@ import {
 } from "@/lib/vocabulary";
 import { bumpConsultTerms } from "@/lib/vocabulary-actions";
 import { registerKbInsert, setKbContext, type KbInsertPayload } from "@/lib/kb-bridge";
-import { saveAsTemplate, saveVisit, deleteTemplate } from "./actions";
+import { saveAsTemplate, saveVisit, deleteTemplate, saveDraft } from "./actions";
 
 export type KbFormula = {
   id: string;
@@ -99,12 +99,21 @@ export type ConsultationData = {
   kbFormula: KbFormula | null;
   /** 保存过的常用方 / 协定处方，右栏可一键套用 */
   templates: TemplateSummary[];
+  /** 上次自动保存的草稿时间（有值说明这次是从草稿恢复的） */
+  draftSavedAt: string | null;
+  /** 药名补全词表 + 剂量记忆（count 越大用得越多） */
+  herbLexicon: { name: string; py: string; initials: string; dose: string; count: number }[];
 };
 
 function mmss(seconds: number): string {
   const m = String(Math.floor(seconds / 60)).padStart(2, "0");
   const s = String(seconds % 60).padStart(2, "0");
   return `${m}:${s}`;
+}
+
+function clockOf(iso: string): string {
+  const date = new Date(iso);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 export function VisitScreen({ data }: { data: ConsultationData }) {
@@ -120,11 +129,17 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
   const [kbPending, setKbPending] = useState<KbInsertPayload | null>(null);
   const [lastOpen, setLastOpen] = useState(false);
   const [symQuery, setSymQuery] = useState("");
+  const [herbSuggest, setHerbSuggest] = useState<
+    { index: number; list: { name: string; dose: string; count: number }[]; active: number } | null
+  >(null);
   const [status, setStatus] = useState(data.status);
+  const [savedAt, setSavedAt] = useState<string | null>(data.draftSavedAt);
 
   const formRef = useRef<HTMLDivElement | null>(null);
   const saveRef = useRef<(print: boolean) => void>(() => {});
   const dosesRef = useRef<HTMLInputElement | null>(null);
+  const draftRef = useRef<VisitDraft>(data.draft);
+  const draftTimer = useRef<number | null>(null);
 
   const isAmend = revisionNo > 0;
   const errors = useMemo(() => validateDraft(draft, isAmend), [draft, isAmend]);
@@ -214,6 +229,33 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // 草稿自动保存：停手 2.5 秒存一份，刷新/断电后能接着写
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
+    if (!dirty || saving) return;
+    if (draftTimer.current) window.clearTimeout(draftTimer.current);
+    draftTimer.current = window.setTimeout(() => {
+      void saveDraft(data.visitId, draftRef.current).then((result) => {
+        if (result.ok && result.savedAt) setSavedAt(result.savedAt);
+      });
+    }, 2500);
+    return () => {
+      if (draftTimer.current) window.clearTimeout(draftTimer.current);
+    };
+  }, [dirty, saving, draft, data.visitId]);
+
+  // 这次是从自动草稿恢复的，进页面先提示一下
+  useEffect(() => {
+    if (data.draftSavedAt) {
+      setToast(`已恢复上次自动保存的草稿（${clockOf(data.draftSavedAt)}），保存并签名后才会进正式病历`);
+    }
+    // 只在首次挂载提示一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const patch = <K extends keyof VisitDraft>(key: K, value: VisitDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
     setDirty(true);
@@ -228,6 +270,43 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
   };
 
   const setItems = (items: HerbDraft[]) => patchRx({ items });
+
+  // 药名补全：中文包含 / 全拼包含 / 首字母前缀，按「常用程度」排前面
+  const suggestHerbs = (query: string) => {
+    const q = query.trim();
+    if (!q) return [];
+    const lower = q.toLowerCase();
+    const starts: typeof data.herbLexicon = [];
+    const contains: typeof data.herbLexicon = [];
+    for (const entry of data.herbLexicon) {
+      if (entry.name.startsWith(q)) {
+        starts.push(entry);
+      } else if (
+        entry.name.includes(q) ||
+        (entry.py && entry.py.includes(lower)) ||
+        (entry.initials && entry.initials.startsWith(lower))
+      ) {
+        contains.push(entry);
+      }
+      if (starts.length >= 8) break;
+    }
+    return [...starts, ...contains].slice(0, 8);
+  };
+
+  const pickHerb = (index: number, suggestion: { name: string; dose: string }) => {
+    const items = draft.prescription.items.slice();
+    const current = items[index];
+    if (!current) return;
+    const remembered = suggestion.dose ? parseDose(suggestion.dose) : null;
+    items[index] = {
+      ...current,
+      name: suggestion.name,
+      doseValue: current.doseValue || remembered?.value || "",
+      doseUnit: current.doseUnit || remembered?.unit || "g",
+    };
+    setItems(items);
+    setHerbSuggest(null);
+  };
 
   const toggleArray = (key: "symptoms" | "tongue" | "pulse", value: string) => {
     const list = draft[key];
@@ -530,6 +609,12 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
             <span className={dirty ? "text-accent-ink" : "text-ink-4"}>
               {dirty ? "未保存" : status === "signed" ? `已保存第 ${revisionNo} 版` : "待填写"}
             </span>
+            {savedAt ? (
+              <>
+                <span className="text-ink-4">·</span>
+                <span className="text-brand">草稿已自动保存 {clockOf(savedAt)}</span>
+              </>
+            ) : null}
           </span>
         }
         actions={
@@ -542,6 +627,11 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
             <Link href={`/patients/${data.patient.id}`} className="btn btn-quiet">
               返回
             </Link>
+            {revisionNo > 0 ? (
+              <Link href={`/visits/${data.visitId}/revisions`} className="btn btn-quiet">
+                修订历史
+              </Link>
+            ) : null}
             <button
               type="button"
               className="btn btn-ghost"
@@ -597,6 +687,7 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
               className="input h-[30px] text-[12.5px] flex-1 max-w-[420px]"
               value={draft.amendedReason}
               placeholder="例如：患者服药后睡眠改善，酸枣仁加量"
+              aria-label="修订原因"
               onChange={(event) => patch("amendedReason", event.target.value)}
               data-kb-stop
             />
@@ -977,17 +1068,90 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
                   key={item.key}
                   className="group flex items-center gap-2 h-9 rounded-[6px] px-1 hover:bg-ghost"
                 >
-                  <input
-                    className="flex-1 min-w-0 bg-transparent border-0 outline-none font-serif text-[15px] text-ink placeholder:text-ink-4"
-                    placeholder="药名"
-                    aria-label={`第 ${index + 1} 味药名`}
-                    value={item.name}
-                    onChange={(event) => {
-                      const items = draft.prescription.items.slice();
-                      items[index] = { ...item, name: event.target.value };
-                      setItems(items);
-                    }}
-                  />
+                  <div className="relative flex-1 min-w-0">
+                    <input
+                      className="w-full bg-transparent border-0 outline-none font-serif text-[15px] text-ink placeholder:text-ink-4"
+                      placeholder="药名"
+                      aria-label={`第 ${index + 1} 味药名`}
+                      autoComplete="off"
+                      value={item.name}
+                      onFocus={() => {
+                        const list = suggestHerbs(item.name).map((entry) => ({
+                          name: entry.name,
+                          dose: entry.dose,
+                          count: entry.count,
+                        }));
+                        if (list.length) setHerbSuggest({ index, list, active: 0 });
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => {
+                          setHerbSuggest((current) => (current && current.index === index ? null : current));
+                        }, 120);
+                      }}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        const items = draft.prescription.items.slice();
+                        items[index] = { ...item, name: value };
+                        setItems(items);
+                        const list = suggestHerbs(value).map((entry) => ({
+                          name: entry.name,
+                          dose: entry.dose,
+                          count: entry.count,
+                        }));
+                        setHerbSuggest(list.length ? { index, list, active: 0 } : null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (!herbSuggest || herbSuggest.index !== index || !herbSuggest.list.length) return;
+                        if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setHerbSuggest({
+                            ...herbSuggest,
+                            active: (herbSuggest.active + 1) % herbSuggest.list.length,
+                          });
+                        } else if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setHerbSuggest({
+                            ...herbSuggest,
+                            active:
+                              (herbSuggest.active - 1 + herbSuggest.list.length) %
+                              herbSuggest.list.length,
+                          });
+                        } else if (event.key === "Enter" || event.key === "Tab") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          pickHerb(index, herbSuggest.list[herbSuggest.active]);
+                        } else if (event.key === "Escape") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setHerbSuggest(null);
+                        }
+                      }}
+                    />
+                    {herbSuggest && herbSuggest.index === index && herbSuggest.list.length ? (
+                      <div className="absolute left-0 top-[calc(100%+5px)] z-30 w-[210px] rounded-[8px] border border-line bg-surface shadow-pop py-1">
+                        {herbSuggest.list.map((entry, entryIndex) => (
+                          <button
+                            type="button"
+                            key={entry.name}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              pickHerb(index, entry);
+                            }}
+                            className={`w-full flex items-baseline justify-between gap-2 px-2.5 py-1.5 text-left ${
+                              entryIndex === herbSuggest.active ? "bg-ghost" : ""
+                            }`}
+                          >
+                            <span className="font-serif text-[14px] text-ink truncate">{entry.name}</span>
+                            <span className="shrink-0 text-[11px] text-ink-4 num">
+                              {entry.dose ? `常用 ${entry.dose}` : entry.count ? `用过 ${entry.count} 次` : ""}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <input
                     inputMode="decimal"
                     className="w-[46px] text-right num text-[13px] text-ink bg-transparent border-0 outline-none placeholder:text-ink-4"

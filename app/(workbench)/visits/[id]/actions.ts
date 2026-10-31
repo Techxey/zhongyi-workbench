@@ -147,8 +147,43 @@ export async function saveVisit(visitId: string, draft: VisitDraft): Promise<Sav
 
   revalidatePath(`/visits/${visitId}`);
   revalidatePath(`/patients/${visit.patientId}`);
+  await prisma.visitDraft.deleteMany({ where: { visitId } }).catch(() => null);
 
   return { ok: true, revisionNo: nextNo };
+}
+
+/** 自动保存草稿：接诊台打字时每隔几秒存一份，刷新/断电后还能接着写 */
+export async function saveDraft(
+  visitId: string,
+  draft: VisitDraft,
+): Promise<{ ok: boolean; savedAt: string | null; message?: string }> {
+  const user = await requireUser();
+  const visit = await prisma.visit.findUnique({ where: { id: visitId }, select: { id: true } });
+  if (!visit) return { ok: false, savedAt: null, message: "就诊记录不存在" };
+
+  const now = new Date().toISOString();
+  try {
+    await prisma.visitDraft.upsert({
+      where: { visitId },
+      create: {
+        visitId,
+        dataJson: JSON.stringify(draft),
+        operatorId: user.id,
+        createdAt: now,
+        updatedAt: now,
+      },
+      update: { dataJson: JSON.stringify(draft), updatedAt: now },
+    });
+    return { ok: true, savedAt: now };
+  } catch {
+    return { ok: false, savedAt: null, message: "草稿保存失败" };
+  }
+}
+
+export async function clearDraft(visitId: string): Promise<{ ok: boolean }> {
+  await requireUser();
+  await prisma.visitDraft.deleteMany({ where: { visitId } }).catch(() => null);
+  return { ok: true };
 }
 
 export type SaveTemplateResult = { ok: true; name: string } | { ok: false; message: string };

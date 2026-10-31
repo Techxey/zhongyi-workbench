@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { emptyDraft, parseDose, type RxLine, type VisitDraft } from "@/lib/visit";
+import { pinyinOf } from "@/lib/format";
 import { groupVocab } from "@/lib/vocabulary";
 import { loadVocabItems } from "@/lib/vocabulary-server";
 import type { AttachmentItem } from "@/lib/attachments";
@@ -144,7 +145,18 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     ? { ...blankRx, usageText: defaultUsage.value }
     : blankRx;
 
-  const draft: VisitDraft = currentRevision
+  const draftRow = await prisma.visitDraft.findUnique({ where: { visitId: visit.id } });
+  let restoredDraft: VisitDraft | null = null;
+  if (draftRow) {
+    try {
+      const parsed = JSON.parse(draftRow.dataJson) as VisitDraft;
+      if (parsed && typeof parsed === "object" && parsed.prescription) restoredDraft = parsed;
+    } catch {
+      restoredDraft = null;
+    }
+  }
+
+  const baseDraft: VisitDraft = currentRevision
     ? {
         chiefComplaint: currentRevision.chiefComplaint ?? "",
         presentIllness: currentRevision.presentIllness ?? "",
@@ -185,6 +197,58 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
       }
     : { ...emptyDraft(), prescription: usageWithDefault };
 
+  const draft: VisitDraft = restoredDraft ?? baseDraft;
+
+  // 药名补全 + 剂量记忆：中药词条、别名、以及这位医生历史开过的剂量（最多的那个作为常用量）
+  const [herbItems, herbAliasRows, doseUsage] = await Promise.all([
+    prisma.kbItem.findMany({
+      where: { type: "herb", status: "active" },
+      select: { name: true },
+      orderBy: { name: "asc" },
+      take: 400,
+    }),
+    prisma.kbAlias.findMany({
+      where: { aliasType: "herb_name" },
+      select: { normTerm: true },
+    }),
+    prisma.$queryRawUnsafe<{ herb_name: string; dose: string; cnt: bigint }[]>(
+      `SELECT herb_name, dose, COUNT(*) AS cnt
+         FROM prescription_items
+        WHERE dose IS NOT NULL AND dose <> ''
+        GROUP BY herb_name, dose
+        ORDER BY cnt DESC`,
+    ),
+  ]);
+
+  const doseHint = new Map<string, { dose: string; count: number }>();
+  for (const row of doseUsage) {
+    const count = Number(row.cnt);
+    const prev = doseHint.get(row.herb_name);
+    if (!prev) {
+      doseHint.set(row.herb_name, { dose: row.dose, count });
+    } else {
+      prev.count += count;
+    }
+  }
+  const herbNames = new Set<string>();
+  for (const item of herbItems) herbNames.add(item.name);
+  for (const alias of herbAliasRows) if (alias.normTerm) herbNames.add(alias.normTerm);
+  for (const row of doseUsage) herbNames.add(row.herb_name);
+  const herbLexicon = [...herbNames]
+    .map((name) => {
+      const py = pinyinOf(name);
+      const hint = doseHint.get(name);
+      return {
+        name,
+        py: py.full,
+        initials: py.initials,
+        dose: hint?.dose ?? "",
+        count: hint?.count ?? 0,
+      };
+    })
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "zh"))
+    .slice(0, 800);
+
   const data: ConsultationData = {
     visitId: visit.id,
     patient: {
@@ -203,6 +267,8 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     doctorName: clinicDoctor?.value || user.name,
     clinicName: clinicSetting?.value || "中医诊所",
     draft,
+    draftSavedAt: draftRow?.updatedAt ?? null,
+    herbLexicon,
     isAmend: visit.revisions.length > 0,
     previous: previousRevision
       ? {

@@ -20,6 +20,7 @@ const prescriptionIds = (
 await prisma.prescriptionItem.deleteMany({ where: { prescriptionId: { in: prescriptionIds } } });
 await prisma.prescription.deleteMany({ where: { id: { in: prescriptionIds } } });
 await prisma.attachment.deleteMany({});
+await prisma.visitDraft.deleteMany({});
 await prisma.templateItem.deleteMany({});
 await prisma.templatePrescription.deleteMany({});
 await prisma.visitRevision.deleteMany({ where: { visitId: { in: visitIds } } });

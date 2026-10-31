@@ -302,3 +302,16 @@ model Attachment {
   @@index([visitId])
   @@map("attachments")
 }
+
+// 未保存的接诊草稿：医生在接诊台打字时自动存一份，刷新或断电后还能接着写。
+// 只存一份（每人每就诊一份），保存并签名成功后清掉。
+model VisitDraft {
+  id         String @id @default(uuid())
+  visitId    String @unique @map("visit_id")
+  dataJson   String @map("data_json")
+  operatorId String? @map("operator_id")
+  createdAt  String @map("created_at")
+  updatedAt  String @map("updated_at")
+
+  @@map("visit_drafts")
+}
