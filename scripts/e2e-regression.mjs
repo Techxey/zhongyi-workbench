@@ -159,6 +159,49 @@ try {
   await page.waitForTimeout(1500);
   const settingsText = await page.locator("body").innerText();
   check("打印版式保存有反馈", settingsText.includes("已保存"));
+
+  // 11 知识库分页
+  await page.goto(`${BASE}/kb`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
+  const kbText = await page.locator("body").innerText();
+  check("知识库有分页", /第 1 \/ \d+ 页/.test(kbText));
+
+  // 12 医案详情（有主诉/治法）
+  await page.locator("button", { hasText: /^医案/ }).first().click();
+  await page.waitForTimeout(800);
+  const caseRow = page.locator("table tbody tr").first();
+  if (await caseRow.count()) {
+    await caseRow.click();
+    await page.waitForTimeout(900);
+    const drawerText = await page.locator("body").innerText();
+    check("医案详情有主诉与治法", drawerText.includes("主诉") && drawerText.includes("治法"));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+  } else {
+    check("医案页签有内容", false, "没有医案");
+  }
+
+  // 13 病历导出 PDF
+  const signedHref = await page
+    .goto(`${BASE}/records?q=${encodeURIComponent("入睡困难")}`, { waitUntil: "networkidle" })
+    .then(() => page.waitForTimeout(1200))
+    .then(() => page.locator("a[href^='/visits/']").first().getAttribute("href"));
+  const signedId = (signedHref ?? "").split("/").pop();
+  const pdf = await page.evaluate(async (url) => {
+    const response = await fetch(url);
+    const buffer = await response.arrayBuffer();
+    return {
+      status: response.status,
+      type: response.headers.get("content-type"),
+      bytes: buffer.byteLength,
+      head: String.fromCharCode(...new Uint8Array(buffer.slice(0, 5))),
+    };
+  }, `/api/print/${signedId}/pdf`);
+  check(
+    "病历可导出 PDF",
+    pdf.status === 200 && pdf.type === "application/pdf" && pdf.head === "%PDF-" && pdf.bytes > 10000,
+    JSON.stringify(pdf),
+  );
 } catch (error) {
   check("脚本执行未抛错", false, String(error).slice(0, 300));
 } finally {

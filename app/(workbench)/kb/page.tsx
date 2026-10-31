@@ -6,7 +6,32 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { parseClassicMeta } from "@/lib/kb-classic";
 import { parseComposition } from "@/lib/kb";
-import { KbBrowser, type KbAliasRow, type KbBatchRow, type KbRow } from "./kb-browser";
+import { KbBrowser, type KbAliasRow, type KbBatchRow, type KbCaseInfo, type KbRow } from "./kb-browser";
+
+function parseCaseInfo(rawJson: string | null): KbCaseInfo | undefined {
+  if (!rawJson) return undefined;
+  try {
+    const raw = JSON.parse(rawJson) as Record<string, unknown>;
+    const text = (value: unknown) =>
+      Array.isArray(value) ? value.join("、") : typeof value === "string" ? value : "";
+    return {
+      complaint: text(raw.chiefComplaint),
+      illness: text(raw.presentIllness),
+      symptoms: text(raw.symptoms),
+      tongue: text(raw.tongue),
+      pulse: text(raw.pulse),
+      syndrome: text(raw.syndrome),
+      treatment: text(raw.treatment),
+      advice: text(raw.advice),
+      visitAt: typeof raw.visitAt === "string" ? raw.visitAt : null,
+      visitNo: typeof raw.visitNo === "number" ? raw.visitNo : null,
+      patient: typeof raw.patient === "string" ? raw.patient : null,
+      visitId: typeof raw.visitId === "string" ? raw.visitId : null,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 export const metadata: Metadata = {
   title: "知识库 · 中医诊疗工作台",
@@ -39,6 +64,7 @@ export default async function KbPage() {
             usageText: true,
             contraindication: true,
             commentary: true,
+            rawJson: true,
             batchId: true,
           },
         },
@@ -67,6 +93,7 @@ export default async function KbPage() {
     const latest = item.versions[0];
     const parts = parseComposition(latest?.compositionJson ?? null);
     const classicMeta = item.type === "classic" ? parseClassicMeta(latest?.commentary ?? null) : null;
+    const caseInfo = item.type === "case" ? parseCaseInfo(latest?.rawJson ?? null) : undefined;
     return {
       id: item.id,
       type: item.type,
@@ -84,6 +111,7 @@ export default async function KbPage() {
       intro: classicMeta ? (latest?.indication ?? "") : undefined,
       chars: classicMeta?.chars,
       chapters: classicMeta?.chapters,
+      caseInfo,
       versions: item.versions.map((version) => ({
         version: version.version,
         createdAt: version.createdAt,

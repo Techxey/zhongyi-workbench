@@ -76,6 +76,9 @@ export default async function PrescriptionPrintPage({
       {pageStyle}
       <div className="print-toolbar no-print">
         <BackLink />
+        <a className="btn btn-ghost" href={`/api/print/${visit.id}/pdf`}>
+          下载 PDF
+        </a>
         <PrintButton />
       </div>
 

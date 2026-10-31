@@ -18,6 +18,21 @@ export type KbVersionRow = {
   batchName: string;
 };
 
+export type KbCaseInfo = {
+  complaint: string;
+  illness: string;
+  symptoms: string;
+  tongue: string;
+  pulse: string;
+  syndrome: string;
+  treatment: string;
+  advice: string;
+  visitAt: string | null;
+  visitNo: number | null;
+  patient: string | null;
+  visitId: string | null;
+};
+
 export type KbRow = {
   id: string;
   type: string;
@@ -36,6 +51,8 @@ export type KbRow = {
   intro?: string;
   chars?: number;
   chapters?: number;
+  /** 医案：从病历存下来的结构（主诉/现病史/四诊/证型/治法/医嘱/原病历） */
+  caseInfo?: KbCaseInfo;
   versions: KbVersionRow[];
 };
 
@@ -110,6 +127,8 @@ export function KbBrowser({
   const [toast, setToast] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
   const [visible, setVisible] = useState(120);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 40;
   /** 古籍页签：是否搜正文（FTS5 全文检索） */
   const [bodySearch, setBodySearch] = useState(false);
   const [bodyHits, setBodyHits] = useState<KbClassicHit[] | null>(null);
@@ -216,6 +235,21 @@ export function KbBrowser({
       alias: aliases.length,
     }),
     [items, aliases],
+  );
+
+  // 换页签、改搜索词、改筛选都回到第 1 页
+  useEffect(() => {
+    setPage(1);
+  }, [tab, query, source, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageSafe = Math.min(page, totalPages);
+  const paged = filtered.slice(pageSafe * PAGE_SIZE - PAGE_SIZE, pageSafe * PAGE_SIZE);
+  const aliasTotalPages = Math.max(1, Math.ceil(filteredAliases.length / PAGE_SIZE));
+  const aliasPageSafe = Math.min(page, aliasTotalPages);
+  const pagedAliases = filteredAliases.slice(
+    aliasPageSafe * PAGE_SIZE - PAGE_SIZE,
+    aliasPageSafe * PAGE_SIZE,
   );
 
   function flash(message: string) {
@@ -436,7 +470,7 @@ export function KbBrowser({
                 </tr>
               </thead>
               <tbody>
-                {filteredAliases.slice(0, 300).map((alias) => (
+                {pagedAliases.map((alias) => (
                   <tr key={alias.id} className="border-b border-line-2 last:border-b-0">
                     <td className="px-4 h-[42px] text-ink">{alias.term}</td>
                     <td className="px-4 h-[42px] text-ink-2">{alias.normTerm}</td>
@@ -451,6 +485,7 @@ export function KbBrowser({
               </tbody>
             </table>
           )}
+          <Pager page={aliasPageSafe} totalPages={aliasTotalPages} total={filteredAliases.length} onChange={setPage} unit="条别名" />
         </section>
       ) : filtered.length === 0 ? (
         <section className="card px-6 py-14 text-center">
@@ -486,7 +521,7 @@ export function KbBrowser({
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, visible).map((item) => (
+              {paged.map((item) => (
                 <tr
                   key={item.id}
                   className={`border-b border-line-2 last:border-b-0 hover:bg-ghost cursor-pointer ${
@@ -527,20 +562,7 @@ export function KbBrowser({
               ))}
             </tbody>
           </table>
-          {filtered.length > visible ? (
-            <div className="px-4 py-3 border-t border-line-2 flex items-center justify-between">
-              <span className="text-[11.5px] text-ink-4">
-                已显示 {visible} / {filtered.length} 条
-              </span>
-              <button
-                type="button"
-                className="btn btn-quiet h-[30px]"
-                onClick={() => setVisible((current) => current + 120)}
-              >
-                显示更多
-              </button>
-            </div>
-          ) : null}
+          <Pager page={pageSafe} totalPages={totalPages} total={filtered.length} onChange={setPage} unit={tab === "classic" ? "部" : "条"} />
         </section>
       )}
 
@@ -888,12 +910,39 @@ function KbDetail({
           ) : (
             <>
               <div className="space-y-3 text-[13px]">
+                {item.caseInfo ? (
+                  <>
+                    <div className="flex items-center gap-4 text-[12px] text-ink-3 pb-1 border-b border-line-2">
+                      <span>患者：{item.caseInfo.patient ?? "—"}</span>
+                      <span className="num">
+                        {item.caseInfo.visitAt ? formatDateTime(item.caseInfo.visitAt) : "—"}
+                      </span>
+                      <span>第 {item.caseInfo.visitNo ?? "—"} 次接诊</span>
+                    </div>
+                    <Field label="主诉" value={item.caseInfo.complaint || "—"} />
+                    <Field label="现病史" value={item.caseInfo.illness || "—"} />
+                    <Field label="四诊" value={[item.caseInfo.tongue, item.caseInfo.pulse].filter(Boolean).join(" · ") || "—"} />
+                    <Field label="问诊要点" value={item.caseInfo.symptoms || "—"} />
+                    <Field label="证型" value={item.caseInfo.syndrome || "—"} />
+                    <Field label="治法" value={item.caseInfo.treatment || "—"} />
+                    <Field label="医嘱" value={item.caseInfo.advice || "—"} />
+                    {item.caseInfo.visitId ? (
+                      <Link href={`/visits/${item.caseInfo.visitId}`} className="btn btn-ghost h-[30px] inline-flex">
+                        打开原病历
+                      </Link>
+                    ) : null}
+                  </>
+                ) : null}
                 <Field label="组成" value={latest?.composition.join("、") ?? "—"} serif />
                 <Field label="功效" value={latest?.efficacy || "—"} />
                 <Field label="主治" value={latest?.indication || "—"} />
                 <Field label="用法" value={latest?.usageText || "—"} />
-                <Field label="禁忌" value={latest?.contraindication || "—"} />
-                <Field label="方解" value={latest?.commentary || "—"} />
+                {item.caseInfo ? null : (
+                  <>
+                    <Field label="禁忌" value={latest?.contraindication || "—"} />
+                    <Field label="方解" value={latest?.commentary || "—"} />
+                  </>
+                )}
                 {item.aliases.length > 0 ? <Field label="别名" value={item.aliases.join(" / ")} /> : null}
               </div>
 
@@ -937,6 +986,47 @@ function KbDetail({
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function Pager({
+  page,
+  totalPages,
+  total,
+  onChange,
+  unit,
+}: {
+  page: number;
+  totalPages: number;
+  total: number;
+  onChange: (page: number) => void;
+  unit: string;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="px-4 py-3 border-t border-line-2 flex items-center justify-between">
+      <span className="text-[11.5px] text-ink-4">
+        第 {page} / {totalPages} 页 · 共 {total} {unit}
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="btn btn-quiet h-[30px]"
+          disabled={page <= 1}
+          onClick={() => onChange(page - 1)}
+        >
+          上一页
+        </button>
+        <button
+          type="button"
+          className="btn btn-quiet h-[30px]"
+          disabled={page >= totalPages}
+          onClick={() => onChange(page + 1)}
+        >
+          下一页
+        </button>
+      </div>
     </div>
   );
 }

@@ -324,6 +324,15 @@ export async function saveVisitAsCase(visitId: string): Promise<SaveCaseResult> 
   const existing = await prisma.kbItem.findFirst({ where: { type: "case", name, source } });
   if (existing) return { ok: false, message: `已经有同名医案「${name}」` };
 
+  const listOf = (raw: string | null) => {
+    try {
+      const value = JSON.parse(raw || "[]");
+      return Array.isArray(value) ? value : [];
+    } catch {
+      return [];
+    }
+  };
+
   const now = new Date().toISOString();
   const item = await prisma.kbItem.create({
     data: {
@@ -351,11 +360,15 @@ export async function saveVisitAsCase(visitId: string): Promise<SaveCaseResult> 
         patient: visit.patient.name,
         visitAt: visit.visitAt,
         visitNo: visit.visitNo,
+        visitId: visit.id,
+        chiefComplaint: revision.chiefComplaint,
+        presentIllness: revision.presentIllness,
         syndrome: revision.syndrome,
         treatment: revision.treatment,
-        tongue: revision.tongueJson,
-        pulse: revision.pulseJson,
-        symptoms: revision.symptomsJson,
+        tongue: listOf(revision.tongueJson),
+        pulse: listOf(revision.pulseJson),
+        symptoms: listOf(revision.symptomsJson),
+        advice: revision.advice,
       }),
       createdAt: now,
     },
