@@ -19,6 +19,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { IMPORT_TARGETS, formatCompositionJson } from "@/lib/kb";
+import { invalidateKbIndex } from "@/lib/kb-search";
 import {
   KbImportError,
   MAX_IMPORT_BYTES,
@@ -531,6 +532,7 @@ export async function commitImport(
     revalidatePath("/kb");
     revalidatePath("/kb/import");
     revalidatePath("/visits", "layout");
+    invalidateKbIndex();
 
     await fs.unlink(prepared.tmp.file).catch(() => undefined);
     await fs.unlink(path.join(TMP_ROOT, `${token}.meta`)).catch(() => undefined);
@@ -629,6 +631,7 @@ export async function rollbackBatch(
     revalidatePath("/kb");
     revalidatePath("/kb/import");
     revalidatePath("/visits", "layout");
+    invalidateKbIndex();
 
     return { ok: true, removed, reverted };
   } catch (error) {

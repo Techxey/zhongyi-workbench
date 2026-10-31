@@ -216,6 +216,26 @@ async function main() {
   check("模板示例行非空", IMPORT_TEMPLATE_SAMPLE.length === IMPORT_TEMPLATE_HEAD.length);
   check("MAX_IMPORT_BYTES 是 5MB", MAX_IMPORT_BYTES === 5 * 1024 * 1024);
 
+  // 只有警告行的批次：pass 模式无可写入行，all 模式必须能选到
+  // （UI 里「全部导入」按钮的可用性要用 pass + warn + update 判断，不能只看 pass + update）
+  const warnOnlyRows = validateImportRows(
+    [
+      { 方名: "自测无出处方", 组成: "自测药A10g|自测药B6g", 出处: "" },
+      { 方名: "自测缺剂量方", 组成: "自测药A|自测药B6g", 出处: "《自测》" },
+    ],
+    [2, 3],
+    { 方名: "name", 组成: "composition", 出处: "source" },
+    ctx,
+  );
+  const warnOnlySummary = summarizeRows(warnOnlyRows);
+  check(
+    "只有警告行的批次：2 警告 0 错误",
+    warnOnlySummary.warn === 2 && warnOnlySummary.error === 0,
+    JSON.stringify(warnOnlySummary),
+  );
+  check("pass 模式选不到警告行", selectRowsForCommit(warnOnlyRows, "pass").length === 0);
+  check("all 模式能选中全部警告行", selectRowsForCommit(warnOnlyRows, "all").length === 2);
+
   // ---------- 5. 临时批次 入库 → 回滚 ----------
   section("6. 在 dev.db 副本上模拟入库 + 按批次回滚");
   const dbSource = path.join(root, "prisma", "dev.db");
@@ -227,6 +247,16 @@ async function main() {
   });
 
   try {
+    // 让本段可复现：副本里清掉中药词表，避免 W3（药名不在词表）把「自测药」行变成警告
+    const herbIds = (await prisma.kbItem.findMany({ where: { type: "herb" }, select: { id: true } })).map(
+      (row) => row.id,
+    );
+    if (herbIds.length > 0) {
+      await prisma.kbAlias.deleteMany({ where: { kbItemId: { in: herbIds } } });
+      await prisma.kbItemVersion.deleteMany({ where: { kbItemId: { in: herbIds } } });
+      await prisma.kbItem.deleteMany({ where: { id: { in: herbIds } } });
+    }
+
     const beforeItems = await prisma.kbItem.count();
     const beforeVersions = await prisma.kbItemVersion.count();
     const beforeAliases = await prisma.kbAlias.count();

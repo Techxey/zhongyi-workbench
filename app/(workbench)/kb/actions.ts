@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { parseComposition, formatCompositionJson } from "@/lib/kb";
+import { invalidateKbIndex } from "@/lib/kb-search";
 
 export type KbActionState = { ok: boolean; message: string };
 
@@ -30,6 +31,7 @@ export async function toggleKbItem(id: string): Promise<KbActionState> {
   });
   revalidatePath("/kb");
   revalidatePath("/visits", "layout");
+  invalidateKbIndex();
   return { ok: true, message: next === "disabled" ? "已停用，检索里不再出现" : "已重新启用" };
 }
 
@@ -93,5 +95,6 @@ export async function saveKbVersion(formData: FormData): Promise<KbActionState> 
 
   revalidatePath("/kb");
   revalidatePath("/visits", "layout");
+  invalidateKbIndex();
   return { ok: true, message: `已保存为第 ${nextVersion} 版（旧版本仍可在版本历史里查）` };
 }

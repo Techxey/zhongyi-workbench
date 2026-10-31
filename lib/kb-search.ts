@@ -60,9 +60,15 @@ type Index = {
 };
 
 const CACHE_TTL_MS = 20_000;
-let cache: Index | null = null;
+
+// 用 globalThis 存缓存：dev 下 route handler 与 server action 可能是两份独立的模块实例，
+// 模块级变量各自失效，只有同一个进程的 globalThis 才能让「导入后立刻能搜到」成立。
+type IndexCache = { value: Index | null };
+const cacheRef: IndexCache =
+  ((globalThis as { __zybKbIndexCache?: IndexCache }).__zybKbIndexCache ??= { value: null });
 
 export async function loadKbIndex(force = false): Promise<Index> {
+  const cache = cacheRef.value;
   if (!force && cache && Date.now() - cache.loadedAt < CACHE_TTL_MS) return cache;
 
   const [items, usage] = await Promise.all([
@@ -130,12 +136,13 @@ export async function loadKbIndex(force = false): Promise<Index> {
     }))
     .sort((a, b) => b.term.length - a.term.length);
 
-  cache = { docs, aliases, loadedAt: Date.now() };
-  return cache;
+  const next: Index = { docs, aliases, loadedAt: Date.now() };
+  cacheRef.value = next;
+  return next;
 }
 
 export function invalidateKbIndex() {
-  cache = null;
+  cacheRef.value = null;
 }
 
 const INTENT_ORDER: KbIntent["kind"][] = ["symptom", "syndrome", "formula", "herb"];
