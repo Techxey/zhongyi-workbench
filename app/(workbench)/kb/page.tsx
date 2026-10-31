@@ -64,7 +64,6 @@ export default async function KbPage() {
             usageText: true,
             contraindication: true,
             commentary: true,
-            rawJson: true,
             batchId: true,
           },
         },
@@ -87,13 +86,30 @@ export default async function KbPage() {
   const usageMap = new Map<string, number>();
   for (const row of usage) if (row.kbItemId) usageMap.set(row.kbItemId, row._count._all);
 
+  // 古籍的 rawJson 动辄几 MB（701 部合计 ~174MB），绝不能整表取回来：
+  // 只给「医案」这类真正需要病历正文的条目单独补一次 rawJson。
+  const caseIds = items.filter((item) => item.type === "case").map((item) => item.id);
+  const caseRawMap = new Map<string, string>();
+  if (caseIds.length > 0) {
+    const caseVersions = await prisma.kbItemVersion.findMany({
+      where: { kbItemId: { in: caseIds } },
+      orderBy: [{ kbItemId: "asc" }, { version: "desc" }],
+      select: { kbItemId: true, rawJson: true },
+    });
+    for (const version of caseVersions) {
+      if (!caseRawMap.has(version.kbItemId) && version.rawJson) {
+        caseRawMap.set(version.kbItemId, version.rawJson);
+      }
+    }
+  }
+
   const batchMap = new Map(batches.map((batch) => [batch.id, batch.filename ?? "未命名批次"]));
 
   const rows: KbRow[] = items.map((item) => {
     const latest = item.versions[0];
     const parts = parseComposition(latest?.compositionJson ?? null);
     const classicMeta = item.type === "classic" ? parseClassicMeta(latest?.commentary ?? null) : null;
-    const caseInfo = item.type === "case" ? parseCaseInfo(latest?.rawJson ?? null) : undefined;
+    const caseInfo = item.type === "case" ? parseCaseInfo(caseRawMap.get(item.id) ?? null) : undefined;
     return {
       id: item.id,
       type: item.type,
