@@ -78,11 +78,13 @@ export function KbSearchOverlay() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // 打开时聚焦输入框、重置选中
+  // 打开时聚焦输入框、重置选中与查询
   useEffect(() => {
     if (!open) return;
     setActive(0);
     setHint(null);
+    setExpanded(null);
+    setQuery("");
     const timer = window.setTimeout(() => inputRef.current?.focus(), 30);
     return () => window.clearTimeout(timer);
   }, [open]);
