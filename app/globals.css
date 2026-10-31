@@ -2,27 +2,117 @@
 
 /* ——————————————————————————————
    中医诊疗工作台 · 设计 token
-   米白 + 墨绿，纸感、安静、可长时间阅读
+   日间：米白纸感；夜间：墨色暖调（不是纯黑，久看不刺眼）
+   语义变量 --c-* 在 :root / .dark 里各给一套，@theme inline 把它们映射成
+   Tailwind 颜色工具类，所以 bg-canvas / text-ink 这类写法在切换主题时自动跟随。
    —————————————————————————————— */
-@theme {
-  --color-canvas: #f5f2ec;
-  --color-surface: #ffffff;
-  --color-rail: #222925;
-  --color-panel: #fbfaf6;
-  --color-brand: #2f5d50;
-  --color-brand-soft: #e7efe9;
-  --color-accent: #f8ede6;
-  --color-accent-ink: #7a4a33;
-  --color-ink: #23221f;
-  --color-ink-2: #5c5a53;
-  --color-ink-3: #8b887e;
-  --color-ink-4: #a6a196;
-  --color-line: #e4e0d5;
-  --color-line-2: #e6e2d7;
-  --color-ghost: #f5f1e7;
-  --color-footer: #faf8f2;
-  --color-danger: #b4452f;
-  --color-ochre: #f2e7cc;
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+
+  --c-canvas: #f5f2ec;
+  --c-surface: #ffffff;
+  --c-rail: #222925;
+  --c-panel: #fbfaf6;
+  --c-brand: #2f5d50;
+  --c-brand-solid: #2f5d50;
+  --c-brand-soft: #e7efe9;
+  --c-accent: #f8ede6;
+  --c-accent-ink: #7a4a33;
+  --c-ink: #23221f;
+  --c-ink-2: #5c5a53;
+  --c-ink-3: #8b887e;
+  --c-ink-4: #a6a196;
+  --c-line: #e4e0d5;
+  --c-line-2: #e6e2d7;
+  --c-line-strong: #d8d3c6;
+  --c-ghost: #f5f1e7;
+  --c-footer: #faf8f2;
+  --c-danger: #b4452f;
+  --c-ochre: #f2e7cc;
+  --c-chip-brand-line: #d3e2d8;
+  --c-chip-accent-line: #f0dbcd;
+  --c-chip-danger-bg: #fbeeea;
+  --c-chip-danger-line: #f2d5cd;
+  --c-rail-brand: #e7efe9;
+  --c-seg-active: #ffffff;
+
+  --c-ring: rgba(47, 93, 80, 0.1);
+  --c-ring-danger: rgba(180, 69, 47, 0.1);
+  --c-shadow-card: 0 1px 2px rgba(35, 34, 31, 0.04);
+  --c-shadow-pop:
+    0 18px 48px rgba(35, 34, 31, 0.16), 0 2px 8px rgba(35, 34, 31, 0.06);
+  --c-scroll-thumb: #d9d4c8;
+  --c-scroll-thumb-hover: #c7c1b3;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --c-canvas: #14161a;
+  --c-surface: #1e2226;
+  --c-rail: #0c0e10;
+  --c-panel: #1a1e22;
+  --c-brand: #7dbfa6;
+  --c-brand-solid: #2f6b57;
+  --c-brand-soft: #1d2f28;
+  --c-accent: #2a211c;
+  --c-accent-ink: #d9ac8f;
+  --c-ink: #e8e4da;
+  --c-ink-2: #b5b2a8;
+  --c-ink-3: #8a887f;
+  --c-ink-4: #6a6961;
+  --c-line: #33383f;
+  --c-line-2: #2a2f35;
+  --c-line-strong: #434a52;
+  --c-ghost: #262b31;
+  --c-footer: #1b1f23;
+  --c-danger: #e27e66;
+  --c-ochre: #3b3322;
+  --c-chip-brand-line: #2a443a;
+  --c-chip-accent-line: #3a2e27;
+  --c-chip-danger-bg: #2a1d1a;
+  --c-chip-danger-line: #3d2723;
+  --c-rail-brand: #a9d7c4;
+  --c-seg-active: #30363d;
+
+  --c-ring: rgba(125, 191, 166, 0.18);
+  --c-ring-danger: rgba(226, 126, 102, 0.18);
+  --c-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --c-shadow-pop:
+    0 18px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --c-scroll-thumb: #3a4046;
+  --c-scroll-thumb-hover: #4b535a;
+}
+
+@theme inline {
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-rail: var(--c-rail);
+  --color-panel: var(--c-panel);
+  --color-brand: var(--c-brand);
+  --color-brand-solid: var(--c-brand-solid);
+  --color-brand-soft: var(--c-brand-soft);
+  --color-accent: var(--c-accent);
+  --color-accent-ink: var(--c-accent-ink);
+  --color-ink: var(--c-ink);
+  --color-ink-2: var(--c-ink-2);
+  --color-ink-3: var(--c-ink-3);
+  --color-ink-4: var(--c-ink-4);
+  --color-line: var(--c-line);
+  --color-line-2: var(--c-line-2);
+  --color-line-strong: var(--c-line-strong);
+  --color-ghost: var(--c-ghost);
+  --color-footer: var(--c-footer);
+  --color-danger: var(--c-danger);
+  --color-ochre: var(--c-ochre);
+  --color-rail-brand: var(--c-rail-brand);
+  --color-seg-active: var(--c-seg-active);
+
+  --shadow-card: var(--c-shadow-card);
+  --shadow-pop: var(--c-shadow-pop);
 
   --font-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui,
     sans-serif;
@@ -32,9 +122,6 @@
   --radius-input: 8px;
   --radius-tag: 6px;
   --radius-overlay: 14px;
-
-  --shadow-card: 0 1px 2px rgba(35, 34, 31, 0.04);
-  --shadow-pop: 0 18px 48px rgba(35, 34, 31, 0.16), 0 2px 8px rgba(35, 34, 31, 0.06);
 }
 
 @layer base {
@@ -43,16 +130,25 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* 主题切换时给底色一个短过渡，避免整屏“闪一下” */
+  html.theme-anim,
+  html.theme-anim body {
+    transition:
+      background-color 0.22s ease,
+      color 0.22s ease;
+  }
+
   body {
-    background-color: var(--color-canvas);
-    color: var(--color-ink);
+    background-color: var(--c-canvas);
+    color: var(--c-ink);
     font-family: var(--font-sans);
     font-size: 14px;
     line-height: 1.6;
   }
 
   ::selection {
-    background: var(--color-ochre);
+    background: var(--c-ochre);
+    color: var(--c-ink);
   }
 
   input,
@@ -69,13 +165,13 @@
     height: 10px;
   }
   ::-webkit-scrollbar-thumb {
-    background: #d9d4c8;
+    background: var(--c-scroll-thumb);
     border: 3px solid transparent;
     background-clip: content-box;
     border-radius: 8px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #c7c1b3;
+    background: var(--c-scroll-thumb-hover);
     background-clip: content-box;
   }
   ::-webkit-scrollbar-track {
@@ -83,22 +179,28 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brand);
+    outline: 2px solid var(--c-brand);
     outline-offset: 2px;
+  }
+
+  /* 让原生控件（下拉箭头、日期选择器等）跟着主题走 */
+  select option {
+    background: var(--c-surface);
+    color: var(--c-ink);
   }
 }
 
 @layer components {
   .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-line);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
     border-radius: var(--radius-card);
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--c-shadow-card);
   }
 
   .card-flat {
-    background: var(--color-surface);
-    border: 1px solid var(--color-line-2);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line-2);
     border-radius: var(--radius-card);
   }
 
@@ -125,81 +227,81 @@
   }
 
   .btn-primary {
-    background: var(--color-brand);
+    background: var(--c-brand-solid);
     color: #fff;
   }
   .btn-primary:hover:not(:disabled) {
-    background: #274f44;
+    background: color-mix(in srgb, var(--c-brand-solid) 88%, #000);
   }
 
   .btn-ghost {
     background: transparent;
-    color: var(--color-ink-2);
-    border: 1px solid var(--color-line);
+    color: var(--c-ink-2);
+    border: 1px solid var(--c-line);
   }
   .btn-ghost:hover:not(:disabled) {
-    background: var(--color-ghost);
-    color: var(--color-ink);
+    background: var(--c-ghost);
+    color: var(--c-ink);
   }
 
   .btn-quiet {
     background: transparent;
-    color: var(--color-ink-2);
+    color: var(--c-ink-2);
   }
   .btn-quiet:hover:not(:disabled) {
-    background: var(--color-ghost);
-    color: var(--color-ink);
+    background: var(--c-ghost);
+    color: var(--c-ink);
   }
 
   .input {
     width: 100%;
     height: 36px;
     padding: 0 11px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-line);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
     border-radius: var(--radius-input);
     font-size: 13.5px;
-    color: var(--color-ink);
+    color: var(--c-ink);
     transition:
       border-color 0.15s ease,
       box-shadow 0.15s ease;
   }
   .input::placeholder {
-    color: var(--color-ink-4);
+    color: var(--c-ink-4);
   }
   .input:hover:not(:disabled):not(:focus) {
-    border-color: #d8d3c6;
+    border-color: var(--c-line-strong);
   }
   .input:focus {
-    border-color: var(--color-brand);
-    box-shadow: 0 0 0 3px rgba(47, 93, 80, 0.1);
+    border-color: var(--c-brand);
+    box-shadow: 0 0 0 3px var(--c-ring);
     outline: none;
   }
   .input[aria-invalid="true"] {
-    border-color: var(--color-danger);
+    border-color: var(--c-danger);
   }
   .input[aria-invalid="true"]:focus {
-    box-shadow: 0 0 0 3px rgba(180, 69, 47, 0.1);
+    box-shadow: 0 0 0 3px var(--c-ring-danger);
   }
 
   .textarea {
     width: 100%;
     padding: 9px 11px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-line);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
     border-radius: var(--radius-input);
     font-size: 13.5px;
     line-height: 26px;
-    color: var(--color-ink);
+    color: var(--c-ink);
     resize: vertical;
   }
   .textarea:focus {
-    border-color: var(--color-brand);
-    box-shadow: 0 0 0 3px rgba(47, 93, 80, 0.1);
+    border-color: var(--c-brand);
+    box-shadow: 0 0 0 3px var(--c-ring);
     outline: none;
   }
   .textarea[aria-invalid="true"] {
-    border-color: var(--color-danger);
+    border-color: var(--c-danger);
   }
 
   .chip {
@@ -209,32 +311,32 @@
     height: 24px;
     padding: 0 9px;
     border-radius: var(--radius-tag);
-    border: 1px solid var(--color-line);
-    background: var(--color-surface);
-    color: var(--color-ink-2);
+    border: 1px solid var(--c-line);
+    background: var(--c-surface);
+    color: var(--c-ink-2);
     font-size: 12px;
     white-space: nowrap;
   }
   .chip-brand {
-    background: var(--color-brand-soft);
-    border-color: #d3e2d8;
-    color: var(--color-brand);
+    background: var(--c-brand-soft);
+    border-color: var(--c-chip-brand-line);
+    color: var(--c-brand);
   }
   .chip-accent {
-    background: var(--color-accent);
-    border-color: #f0dbcd;
-    color: var(--color-accent-ink);
+    background: var(--c-accent);
+    border-color: var(--c-chip-accent-line);
+    color: var(--c-accent-ink);
   }
   .chip-danger {
-    background: #fbeeea;
-    border-color: #f2d5cd;
-    color: var(--color-danger);
+    background: var(--c-chip-danger-bg);
+    border-color: var(--c-chip-danger-line);
+    color: var(--c-danger);
   }
 
   .field-label {
     display: block;
     font-size: 12px;
-    color: var(--color-ink-3);
+    color: var(--c-ink-3);
     margin-bottom: 5px;
     letter-spacing: 0.02em;
   }
@@ -242,18 +344,18 @@
   .field-error {
     margin-top: 5px;
     font-size: 12px;
-    color: var(--color-danger);
+    color: var(--c-danger);
   }
 
   .section-title {
     font-size: 13px;
     font-weight: 500;
-    color: var(--color-ink);
+    color: var(--c-ink);
     letter-spacing: 0.02em;
   }
 
   .muted {
-    color: var(--color-ink-3);
+    color: var(--c-ink-3);
   }
 
   .num {

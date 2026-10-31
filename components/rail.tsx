@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/login/actions";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type NavItem = {
   key: string;
@@ -88,7 +89,7 @@ export function Rail({ userName }: { userName: string }) {
     <aside className="fixed inset-y-0 left-0 w-[78px] bg-rail text-white/60 flex flex-col items-center z-30">
       <Link
         href="/patients"
-        className="mt-4 mb-6 w-9 h-9 rounded-[9px] bg-white/10 grid place-items-center font-serif text-[17px] text-brand-soft hover:bg-white/15 transition-colors"
+        className="mt-4 mb-6 w-9 h-9 rounded-[9px] bg-white/10 grid place-items-center font-serif text-[17px] text-rail-brand hover:bg-white/15 transition-colors"
         title="中医诊疗工作台"
       >
         医
@@ -132,6 +133,7 @@ export function Rail({ userName }: { userName: string }) {
       </nav>
 
       <div className="mt-auto mb-4 flex flex-col items-center gap-3">
+        <ThemeToggle />
         <form action={logout}>
           <button
             type="submit"

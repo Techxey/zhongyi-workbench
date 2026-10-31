@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
+import { ThemeFloatingToggle } from "@/components/theme-toggle";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
@@ -18,9 +19,10 @@ export default async function LoginPage({
 
   return (
     <div className="min-h-screen bg-canvas flex items-center justify-center px-6 py-16">
+      <ThemeFloatingToggle />
       <div className="w-full max-w-[392px]">
         <div className="flex items-center gap-3 mb-7">
-          <div className="w-10 h-10 rounded-[9px] bg-brand text-white grid place-items-center font-serif text-[19px] leading-none">
+          <div className="w-10 h-10 rounded-[9px] bg-brand-solid text-white grid place-items-center font-serif text-[19px] leading-none">
             医
           </div>
           <div>

@@ -27,12 +27,12 @@ export function PatientDirectory({ patients }: { patients: DirectoryPatient[] })
   if (patients.length === 0) {
     return (
       <div className="card px-6 py-16 flex flex-col items-center text-center">
-        <div className="w-11 h-11 rounded-full bg-brand-soft grid place-items-center mb-4">
+        <div className="w-11 h-11 rounded-full bg-brand-soft grid place-items-center mb-4 text-brand">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="12" cy="8.5" r="3.6" stroke="#2F5D50" strokeWidth="1.6" />
+            <circle cx="12" cy="8.5" r="3.6" stroke="currentColor" strokeWidth="1.6" />
             <path
               d="M4.8 20c0-3.6 3.2-6.2 7.2-6.2s7.2 2.6 7.2 6.2"
-              stroke="#2F5D50"
+              stroke="currentColor"
               strokeWidth="1.6"
               strokeLinecap="round"
             />

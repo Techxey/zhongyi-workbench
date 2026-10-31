@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getThemeChoice } from "@/lib/theme-server";
 import { TopBar } from "@/components/topbar";
+import { ThemeSegmented } from "@/components/theme-toggle";
 import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
@@ -12,6 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const user = await requireUser();
+  const theme = await getThemeChoice();
 
   const [retention, patientCount, kbCount, visitCount] = await Promise.all([
     prisma.setting.findUnique({ where: { key: "backup_retention_days" } }),
@@ -44,6 +47,19 @@ export default async function SettingsPage() {
               </dd>
             </div>
           </dl>
+        </section>
+
+        <section className="card">
+          <div className="px-5 h-[50px] flex items-center border-b border-line-2">
+            <h2 className="section-title">外观</h2>
+            <span className="ml-2 text-[11.5px] text-ink-4">夜间模式可随时切换，侧栏底部也有快捷开关</span>
+          </div>
+          <div className="px-5 py-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <ThemeSegmented initial={theme} />
+            <p className="text-[12.5px] text-ink-3 leading-relaxed max-w-[420px]">
+              夜间为墨色暖调底色，不用纯黑：长时间看舌象照片与药味剂量时更不刺眼。选择会记在本机浏览器里。
+            </p>
+          </div>
         </section>
 
         <section className="card">
