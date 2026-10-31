@@ -39,8 +39,18 @@ export type KbRow = {
   versions: KbVersionRow[];
 };
 
-export type KbAliasRow = {
-  id: string;
+export type KbClassicHit = {
+  itemId: string;
+  name: string;
+  source: string | null;
+  snippet: string;
+  intro: string;
+  chars: number;
+  chapters: number;
+  chapterTitle?: string | null;
+};
+
+export type KbAliasRow = {  id: string;
   term: string;
   normTerm: string;
   aliasType: string;
@@ -99,6 +109,50 @@ export function KbBrowser({
   const [toast, setToast] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
   const [visible, setVisible] = useState(120);
+  /** 古籍页签：是否搜正文（FTS5 全文检索） */
+  const [bodySearch, setBodySearch] = useState(false);
+  const [bodyHits, setBodyHits] = useState<KbClassicHit[] | null>(null);
+  const [bodyLoading, setBodyLoading] = useState(false);
+  const [bodyError, setBodyError] = useState<string | null>(null);
+
+  const bodyMode = tab === "classic" && bodySearch && query.trim().length > 0;
+
+  // 古籍正文检索：250ms 防抖，切走页签/关掉开关就中止
+  useEffect(() => {
+    if (!bodyMode) {
+      setBodyHits(null);
+      setBodyError(null);
+      setBodyLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setBodyLoading(true);
+      setBodyError(null);
+      try {
+        const params = new URLSearchParams({ q: query.trim(), limit: "60" });
+        const response = await fetch(`/api/kb/classic-search?${params.toString()}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        const data = (await response.json()) as { ok: boolean; hits?: KbClassicHit[]; message?: string };
+        if (!data.ok) throw new Error(data.message ?? "检索失败");
+        setBodyHits(data.hits ?? []);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          setBodyError((error as Error).message || "正文检索失败，请重试");
+          setBodyHits([]);
+        }
+      } finally {
+        setBodyLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [bodyMode, query]);
 
   const sources = useMemo(() => {
     if (tab === "alias" || tab === "classic") return ["all"];
@@ -184,7 +238,13 @@ export function KbBrowser({
             setQuery(event.target.value);
             setVisible(120);
           }}
-          placeholder={tab === "classic" ? "搜书名（如 伤寒论、本草纲目）…" : "搜方名、药名、别名、功效…"}
+          placeholder={
+            tab === "classic"
+              ? bodySearch
+                ? "搜书名 / 作者 / 正文（如 失眠、太阳之为病）…"
+                : "搜书名（如 伤寒论、本草纲目）…"
+              : "搜方名、药名、别名、功效…"
+          }
           className="input w-[320px]"
           aria-label="知识库搜索"
         />
@@ -212,20 +272,40 @@ export function KbBrowser({
           </>
         ) : null}
         {tab === "classic" ? (
-          <button
-            type="button"
-            className={`btn ${statusFilter === "active" ? "btn-ghost" : "btn-quiet"} h-[34px]`}
-            onClick={() => setStatusFilter(statusFilter === "active" ? "all" : "active")}
-          >
-            {statusFilter === "active" ? "只看在用" : "含已停用"}
-          </button>
+          <>
+            <button
+              type="button"
+              className={`btn ${statusFilter === "active" ? "btn-ghost" : "btn-quiet"} h-[34px]`}
+              onClick={() => setStatusFilter(statusFilter === "active" ? "all" : "active")}
+            >
+              {statusFilter === "active" ? "只看在用" : "含已停用"}
+            </button>
+            <button
+              type="button"
+              aria-pressed={bodySearch}
+              className={`btn ${bodySearch ? "btn-primary" : "btn-quiet"} h-[34px]`}
+              onClick={() => {
+                setBodySearch(!bodySearch);
+                setVisible(120);
+              }}
+              title="开启后按关键词搜索全书正文（701 部 · 8512 万字，FTS5 索引，几十毫秒）"
+            >
+              搜正文
+            </button>
+          </>
         ) : null}
         <span className="ml-auto text-[11.5px] text-ink-4">
           {tab === "alias"
             ? `${filteredAliases.length} 条别名`
-            : tab === "classic"
-              ? `${filtered.length} 部`
-              : `${filtered.length} 条`}
+            : bodyMode
+              ? bodyLoading
+                ? "正文检索中…"
+                : `${bodyHits?.length ?? 0} 部命中正文`
+              : tab === "classic"
+                ? bodySearch
+                  ? "输入关键词搜全书正文"
+                  : `${filtered.length} 部`
+                : `${filtered.length} 条`}
         </span>
         {tab === "classic" ? null : (
           <Link href="/kb/import" className="btn btn-primary h-[34px]">
@@ -262,7 +342,82 @@ export function KbBrowser({
         })}
       </div>
 
-      {tab === "alias" ? (
+      {bodyMode ? (
+        <section className="card overflow-hidden">
+          {bodyLoading && !bodyHits ? (
+            <div className="px-5 py-10 text-center text-[13px] text-ink-3">正在检索全书正文…</div>
+          ) : bodyError ? (
+            <div className="px-5 py-10 text-center text-[13px] text-danger">{bodyError}</div>
+          ) : (bodyHits?.length ?? 0) === 0 ? (
+            <div className="px-6 py-12 text-center">
+              <p className="text-[13.5px] text-ink-2 mb-1">全书正文里没有查到「{query.trim()}」</p>
+              <p className="text-[12.5px] text-ink-3 mb-4">
+                已检索全部 701 部（8512 万字）。换个词试试，或关掉「搜正文」只按书名/作者找。
+              </p>
+              <button type="button" className="btn btn-ghost" onClick={() => setBodySearch(false)}>
+                只按书名找
+              </button>
+            </div>
+          ) : (
+            <>
+              <table className="w-full border-collapse text-[13px]">
+                <thead>
+                  <tr className="text-left text-[12px] text-ink-3">
+                    <th className="font-normal px-4 h-10 border-b border-line-2 w-[22%]">书名</th>
+                    <th className="font-normal px-4 h-10 border-b border-line-2 w-[12%]">作者</th>
+                    <th className="font-normal px-4 h-10 border-b border-line-2 w-[16%]">命中章节</th>
+                    <th className="font-normal px-4 h-10 border-b border-line-2">正文片段</th>
+                    <th className="font-normal px-4 h-10 border-b border-line-2 w-[10%]">字数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(bodyHits ?? []).slice(0, visible).map((hit) => {
+                    const row = items.find((item) => item.id === hit.itemId) ?? null;
+                    return (
+                      <tr
+                        key={hit.itemId}
+                        className="border-b border-line-2 last:border-b-0 hover:bg-ghost cursor-pointer"
+                        onClick={() => {
+                          if (row) {
+                            setSelected(row);
+                            setEditing(false);
+                          }
+                        }}
+                      >
+                        <td className="px-4 py-2.5 font-serif text-[14px] text-ink">
+                          {hit.name}
+                          {hit.source ? null : <span className="ml-2 text-[11px] text-ink-4">佚名</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-[12px] text-ink-3">{hit.source ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-[12px] text-ink-3">
+                          {hit.chapterTitle || "—"}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="line-clamp-2 text-[12.5px] leading-[1.6] text-ink-2">
+                            {hit.snippet}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-[12px] text-ink-3 num">
+                          {(hit.chars ?? 0).toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {(bodyHits?.length ?? 0) > visible ? (
+                <button
+                  type="button"
+                  className="w-full h-[42px] text-[12.5px] text-ink-3 hover:text-brand border-t border-line-2"
+                  onClick={() => setVisible(visible + 120)}
+                >
+                  已显示 {visible} / {bodyHits?.length ?? 0} 部，点击加载更多
+                </button>
+              ) : null}
+            </>
+          )}
+        </section>
+      ) : tab === "alias" ? (
         <section className="card overflow-hidden">
           {filteredAliases.length === 0 ? (
             <p className="px-5 py-12 text-center text-[13px] text-ink-3">

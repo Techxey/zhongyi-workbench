@@ -36,6 +36,8 @@ export type ClassicSearchHit = {
   intro: string;
   chars: number;
   chapters: number;
+  /** 命中的章名（详情/列表展示用，可能为空） */
+  chapterTitle?: string | null;
 };
 
 export type ClassicBook = {
@@ -186,6 +188,7 @@ function mapFtsRow(row: ClassicFtsRow, needle: string): ClassicSearchHit {
     intro: (row.indication ?? "").slice(0, CLASSIC_INTRO_LIMIT),
     chars: meta.chars,
     chapters: meta.chapters,
+    chapterTitle: row.chapterTitle ?? null,
   };
 }
 
