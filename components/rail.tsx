@@ -76,9 +76,9 @@ const IconSettings = (
 );
 
 const NAV: NavItem[] = [
-  { key: "clinic", label: "接诊", href: null, hint: "接诊台将在下一轮上线", icon: IconClinic },
+  { key: "clinic", label: "接诊", href: "/visits", icon: IconClinic },
   { key: "patients", label: "患者", href: "/patients", icon: IconPatients },
-  { key: "kb", label: "知识库", href: null, hint: "知识库将在第三轮上线", icon: IconKb },
+  { key: "kb", label: "知识库", href: "/kb", icon: IconKb },
   { key: "settings", label: "设置", href: "/settings", icon: IconSettings },
 ];
 

@@ -28,6 +28,7 @@ import {
   type VocabItem,
 } from "@/lib/vocabulary";
 import { bumpConsultTerms } from "@/lib/vocabulary-actions";
+import { registerKbInsert, setKbContext, type KbInsertPayload } from "@/lib/kb-bridge";
 import { saveAsTemplate, saveVisit } from "./actions";
 
 export type KbFormula = {
@@ -104,13 +105,14 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
   const [saving, setSaving] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [kbOpen, setKbOpen] = useState(false);
+  const [kbPending, setKbPending] = useState<KbInsertPayload | null>(null);
   const [lastOpen, setLastOpen] = useState(false);
   const [symQuery, setSymQuery] = useState("");
   const [status, setStatus] = useState(data.status);
 
   const formRef = useRef<HTMLDivElement | null>(null);
   const saveRef = useRef<(print: boolean) => void>(() => {});
+  const dosesRef = useRef<HTMLInputElement | null>(null);
 
   const isAmend = revisionNo > 0;
   const errors = useMemo(() => validateDraft(draft, isAmend), [draft, isAmend]);
@@ -281,15 +283,10 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
   };
   saveRef.current = handleSave;
 
-  // 键盘流：Ctrl+K 检索占位、Ctrl+Enter 保存并打印
+  // 键盘流：Ctrl+Enter 保存并打印（Ctrl+K 由全局检索浮层接管）
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const mod = event.ctrlKey || event.metaKey;
-      if (mod && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setKbOpen(true);
-        return;
-      }
       if (mod && event.key === "Enter") {
         event.preventDefault();
         saveRef.current(true);
@@ -298,6 +295,82 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // 把当前病历的已选症状/证型交给检索浮层，用于「与本次症状吻合 N 项」排序
+  useEffect(() => {
+    setKbContext({ symptoms: draft.symptoms, syndrome: draft.syndrome });
+  }, [draft.symptoms, draft.syndrome]);
+
+  const applyKbFormula = (payload: KbInsertPayload) => {
+    const items: HerbDraft[] =
+      payload.components.length > 0
+        ? payload.components.map((part, index) => {
+            const dose = parseDose(part.dose);
+            return {
+              key: `kb-${payload.kbItemId}-${index}`,
+              name: part.name,
+              doseValue: dose.value,
+              doseUnit: dose.unit || "g",
+              role: null,
+            };
+          })
+        : [newHerb()];
+
+    setDraft((current) => ({
+      ...current,
+      prescription: {
+        ...current.prescription,
+        formulaName: payload.name,
+        formulaSource: payload.source ?? "",
+        kbItemId: payload.kbItemId,
+        kbItemVersion: payload.kbItemVersion,
+        usageText: current.prescription.usageText || payload.usageText || DEFAULT_USAGE,
+        items,
+      },
+    }));
+    setDirty(true);
+    setKbPending(null);
+    setToast(`已带入《${payload.name}》${items.length} 味，剂数可继续改`);
+    window.setTimeout(() => dosesRef.current?.focus(), 40);
+  };
+
+  const appendKbHerb = (payload: KbInsertPayload) => {
+    const part = payload.components[0];
+    const dose = parseDose(part?.dose ?? "");
+    setDraft((current) => {
+      const items = [...current.prescription.items];
+      const blank = items.findIndex((item) => !item.name.trim());
+      const next: HerbDraft = {
+        key: `kb-herb-${payload.kbItemId}-${Date.now()}`,
+        name: payload.name,
+        doseValue: dose.value,
+        doseUnit: dose.unit || "g",
+        role: null,
+      };
+      if (blank >= 0) items[blank] = next;
+      else items.push(next);
+      return { ...current, prescription: { ...current.prescription, items } };
+    });
+    setDirty(true);
+    setToast(`已加一味：${payload.name}`);
+  };
+
+  // 全局检索浮层带入：已有药味时先问「替换 / 追加」
+  useEffect(() => {
+    registerKbInsert((payload) => {
+      if (payload.type === "herb") {
+        appendKbHerb(payload);
+        return;
+      }
+      const filled = draft.prescription.items.some((item) => item.name.trim());
+      if (filled) {
+        setKbPending(payload);
+        return;
+      }
+      applyKbFormula(payload);
+    });
+    return () => registerKbInsert(null);
+  }, [draft.prescription.items]);
 
   const focusStop = (direction: 1 | -1) => {
     const root = formRef.current;
@@ -726,6 +799,7 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
                 <div className="flex items-center gap-1.5">
                   <input
                     id="doses"
+                    ref={dosesRef}
                     data-kb-stop
                     inputMode="numeric"
                     className="input w-[72px] text-right num"
@@ -788,9 +862,11 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
             <button
               type="button"
               className="text-[11.5px] text-ink-4 hover:text-brand"
-              onClick={() => setKbOpen(true)}
+              onClick={() =>
+                window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }))
+              }
             >
-              按 Ctrl+K 从知识库取方
+              从知识库取方（Ctrl+K）
             </button>
           </div>
 
@@ -1020,26 +1096,66 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
         </aside>
       </div>
 
-      {kbOpen ? (
+      {kbPending ? (
         <div
-          className="fixed inset-0 z-40 bg-black/35 grid place-items-start pt-[16vh] px-4"
-          onClick={() => setKbOpen(false)}
+          className="fixed inset-0 z-40 bg-black/35 flex justify-center items-start pt-[20vh] px-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setKbPending(null);
+          }}
         >
-          <div
-            className="w-full max-w-[560px] card rounded-overlay p-5 shadow-pop"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="font-serif text-[17px] text-ink">知识检索</h2>
-              <button type="button" className="btn btn-quiet h-[26px] text-[12px]" onClick={() => setKbOpen(false)}>
-                Esc
+          <div className="w-full max-w-[440px] card rounded-overlay p-5 shadow-pop">
+            <h2 className="font-serif text-[17px] text-ink">处方里已有药味</h2>
+            <p className="mt-1.5 text-[12.5px] text-ink-3 leading-relaxed">
+              把《{kbPending.name}》的 {kbPending.components.length} 味药
+              {draft.prescription.items.some((item) => item.name.trim()) ? "替换现有处方，还是接在后面一起用？" : ""}
+            </p>
+            <div className="mt-4 flex items-center gap-2 justify-end">
+              <button type="button" className="btn btn-quiet" onClick={() => setKbPending(null)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  const payload = kbPending;
+                  setKbPending(null);
+                  if (!payload) return;
+                  const merged: HerbDraft[] = payload.components.map((part, index) => {
+                    const dose = parseDose(part.dose);
+                    return {
+                      key: `kb-${payload.kbItemId}-${index}`,
+                      name: part.name,
+                      doseValue: dose.value,
+                      doseUnit: dose.unit || "g",
+                      role: null,
+                    };
+                  });
+                  setDraft((current) => {
+                    const items = [...current.prescription.items.filter((item) => item.name.trim()), ...merged];
+                    return {
+                      ...current,
+                      prescription: {
+                        ...current.prescription,
+                        formulaName: current.prescription.formulaName
+                          ? `${current.prescription.formulaName}＋${payload.name}`
+                          : payload.name,
+                        kbItemId: payload.kbItemId,
+                        kbItemVersion: payload.kbItemVersion,
+                        items,
+                      },
+                    };
+                  });
+                  setDirty(true);
+                  setToast(`已追加${merged.length} 味，《${payload.name}》记为方源`);
+                  window.setTimeout(() => dosesRef.current?.focus(), 40);
+                }}
+              >
+                追加在后面
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => applyKbFormula(kbPending)}>
+                替换为这个方
               </button>
             </div>
-            <input autoFocus className="input mb-3" placeholder="方名 / 药名 / 症状…" />
-            <p className="text-[12.5px] text-ink-3 leading-relaxed">
-              检索入口已就位，本轮先做占位：下一轮（R3）接入本地知识库的倒排检索、别名归一与「带入处方」，
-              这里的输入框会实时出结果，回车把方剂带进右侧处方。
-            </p>
           </div>
         </div>
       ) : null}
