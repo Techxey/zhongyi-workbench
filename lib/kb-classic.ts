@@ -2,20 +2,27 @@ import { prisma } from "@/lib/db";
 
 /**
  * 古籍：书名/作者/简介/章节数这类「轻」元数据进内存索引与列表页，
- * 正文（rawJson.text / rawJson.chapters 里的全文）只留在 SQLite，按需查询、按需取章节。
+ * 正文（rawJson.text / rawJson.chapters 里的全文）另存一份到 classic_chunks 并按 FTS5 建索引。
  *
- * 存储约定（见 scripts/import-classics.mjs）：
+ * 存储约定（见 scripts/import-classics.mjs 与 scripts/build-classic-fts.mjs）：
  *   kb_items.type = "classic"，source = "作者·朝代"
  *   kb_item_versions.raw_json = JSON.stringify({ text, chapters:[{title,text}], source, charCount, author, dynasty, intro })
  *   kb_item_versions.indication = 简介（正文前 200 字）
  *   kb_item_versions.commentary = JSON.stringify({ chars, chapters, author, dynasty })
- * 这样 kb-search 的内存索引与 /kb 列表页都不必 select raw_json（170MB 正文不进城）。
+ *   classic_chunks(rowid, item_id, chapter_no, chapter_title, body)  —— 正文按章切块（全书，不止前 3 万字）
+ *   classic_fts(body)  —— contentless FTS5，正文逐字空格分开后入库，查询用短语匹配
+ *
+ * 为什么逐字空格：SQLite 的 unicode61 分词器不分中文，整段中文会变成一个 token；
+ * 入库前把「失眠多梦」写成「失 眠 多 梦」，查询时把关键词也逐字写成 "失 眠" 做短语匹配，
+ * 这样任意长度（含单字）的中文查询都能走索引，且保证相邻顺序。
  */
 
 export const CLASSIC_SOURCE = "TCM-Ancient-Books";
 export const CLASSIC_INTRO_LIMIT = 200;
-/** 全文检索时每本书只看正文前 N 个字符：SQLite 的 instr 用不上索引，限定范围换响应速度 */
-export const CLASSIC_SEARCH_WINDOW = 30000;
+
+/** 正文命中时最多取多少块再按书去重（一本书可能命中很多章） */
+const FTS_ROW_LIMIT = 400;
+const SNIPPET_PAD = 22;
 
 export type ClassicChapter = { title: string; text: string };
 
@@ -92,57 +99,56 @@ export function parseClassicRaw(rawJson: string | null | undefined): {
   }
 }
 
-function unescapeSnippet(raw: string): string {
-  // raw_json 里取出来的是 JSON 字符串片段（不带外层引号），转义序列要还原
-  return raw
-    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/\\"/g, '"')
-    .replace(/\\n/g, " ")
-    .replace(/\\r/g, " ")
-    .replace(/\\t/g, " ")
-    .replace(/\\\//g, "/")
-    .replace(/\\\\/g, "\\")
-    .replace(/\s+/g, " ")
-    .trim();
+/** 正文片段：命中位置前后各取一段，压掉换行与多余空白 */
+function makeSnippet(body: string, needle: string): string {
+  const flat = body.replace(/\s+/g, " ");
+  const index = flat.indexOf(needle);
+  if (index < 0) {
+    const lower = flat.toLowerCase();
+    const fallback = lower.indexOf(needle.toLowerCase());
+    if (fallback < 0) return flat.slice(0, 120);
+    return clip(flat, fallback, needle.length);
+  }
+  return clip(flat, index, needle.length);
 }
 
-/** 去掉片段里可能沾到的 JSON 语法噪声与章节标题行 */
-function cleanSnippet(raw: string | null | undefined): string {
-  if (!raw) return "";
-  return unescapeSnippet(raw)
-    .replace(/^\{"text":"/, "")
-    .replace(/^\{?"?[^：:]{0,8}(篇名|属性)[：:]?"?/, "")
-    .replace(/^[{}":，,\s]+/, "")
-    .replace(/"[,\]}].*$/, "")
-    .slice(0, 160)
-    .trim();
+function clip(flat: string, index: number, length: number): string {
+  const from = Math.max(index - SNIPPET_PAD, 0);
+  const to = Math.min(index + length + SNIPPET_PAD + 40, flat.length);
+  const head = from > 0 ? "…" : "";
+  const tail = to < flat.length ? "…" : "";
+  return `${head}${flat.slice(from, to).trim()}${tail}`;
 }
 
-type ClassicTextRow = {
-  itemId: string;
-  name: string;
-  source: string | null;
-  commentary: string | null;
-  indication: string | null;
-  snippet: string | null;
-  match_pos?: number | bigint | null;
-};
+const CJK = /[\u3400-\u9fff\uf900-\ufaff]/;
 
-function mapTextRow(row: ClassicTextRow): ClassicSearchHit {
-  const meta = parseClassicMeta(row.commentary);
-  return {
-    itemId: row.itemId,
-    name: row.name,
-    source: row.source ?? null,
-    snippet: cleanSnippet(row.snippet),
-    intro: (row.indication ?? "").slice(0, CLASSIC_INTRO_LIMIT),
-    chars: meta.chars,
-    chapters: meta.chapters,
+/**
+ * 把查询词拆成 FTS5 短语：中文逐字、英文数字按词，中间用空格连接后整体加引号，
+ * 这样 "失眠" → `"失 眠"`（相邻且有序），"huang qi" → `"huang qi"`。
+ */
+export function buildClassicFtsQuery(query: string): string | null {
+  const tokens: string[] = [];
+  let latin = "";
+  const flush = () => {
+    if (latin) {
+      tokens.push(latin);
+      latin = "";
+    }
   };
+  for (const char of Array.from(query.trim())) {
+    if (CJK.test(char)) {
+      flush();
+      tokens.push(char);
+    } else if (/[0-9a-zA-Z]/.test(char)) {
+      latin += char;
+    } else {
+      flush();
+    }
+  }
+  flush();
+  if (tokens.length === 0) return null;
+  return `"${tokens.join(" ")}"`;
 }
-
-/** rawJson 里换行会转义成 \n（2 字符/1 字），开窗按 1.5 倍留余量，保证覆盖正文前 3 万字 */
-const SEARCH_WINDOW_CHARS = Math.round(CLASSIC_SEARCH_WINDOW * 1.5);
 
 const TEXT_CACHE_TTL_MS = 60_000;
 const TEXT_CACHE_MAX = 200;
@@ -160,95 +166,128 @@ export function invalidateClassicTextCache() {
   textCache().clear();
 }
 
-const SELECT_TEXT_FIELDS = `
-  i.id AS itemId,
-  i.name AS name,
-  i.source AS source,
-  v.commentary AS commentary,
-  v.indication AS indication,
-  instr(substr(v.raw_json, 1, ?), ?) AS match_pos,
-  substr(v.raw_json, MAX(instr(substr(v.raw_json, 1, ?), ?) - 20, 1), 120) AS snippet
-`;
+type ClassicFtsRow = {
+  itemId: string;
+  chapterTitle: string | null;
+  name: string;
+  source: string | null;
+  commentary: string | null;
+  indication: string | null;
+  body: string;
+};
 
-/**
- * 只给「已经在书名/简介里命中的书」补正文片段：按 kb_item_id 走主键，只读这几行，
- * 不扫全库（全库 raw_json 共 ~180MB，扫一遍要 1s+，不能放在每次请求里）。
- */
-export async function enrichClassicSnippets(query: string, ids: string[]): Promise<ClassicSearchHit[]> {
-  const needle = query.trim();
-  if (needle.length < 2 || ids.length === 0) return [];
-  const placeholders = ids.map(() => "?").join(", ");
-  const sql = `
-    SELECT ${SELECT_TEXT_FIELDS}
-    FROM kb_item_versions v
-    JOIN kb_items i ON i.id = v.kb_item_id
-    WHERE i.type = 'classic'
-      AND i.status = 'active'
-      AND v.version = i.current_version
-      AND i.id IN (${placeholders})
-    LIMIT ?
-  `;
-  const rows = await prisma.$queryRawUnsafe<ClassicTextRow[]>(
-    sql,
-    SEARCH_WINDOW_CHARS,
-    needle,
-    SEARCH_WINDOW_CHARS,
-    needle,
-    ...ids,
-    ids.length,
-  );
-  return rows
-    .filter((row) => Number(row.match_pos ?? 0) > 0)
-    .sort((a, b) => Number(a.match_pos ?? 0) - Number(b.match_pos ?? 0))
-    .map(mapTextRow);
+function mapFtsRow(row: ClassicFtsRow, needle: string): ClassicSearchHit {
+  const meta = parseClassicMeta(row.commentary);
+  return {
+    itemId: row.itemId,
+    name: row.name,
+    source: row.source ?? null,
+    snippet: makeSnippet(row.body, needle),
+    intro: (row.indication ?? "").slice(0, CLASSIC_INTRO_LIMIT),
+    chars: meta.chars,
+    chapters: meta.chapters,
+  };
 }
 
 /**
- * 正文全文检索：对 raw_json 做 instr 匹配、substr 取命中片段（前后各 20 字上下文）。
- *
- * 性能取舍（实测 701 部 / raw_json 180MB）：
- * - 按 i.name 顺序 + LIMIT 时，SQLite 命中足够条数就停，常见词约 100-300ms；
- * - 若 query 在全书几乎不出现，必须扫完整张表，约 1.1s（受磁盘读 180MB 限制）。
- *   所以结果进内存缓存 60s（globalThis.__zybClassicTextCache），重复查询 <1ms。
- * - 只扫描每本书正文前 CLASSIC_SEARCH_WINDOW(3 万字)，更靠后的正文不参与全文检索，
- *   这是写进 README 的已知限制；书名命中和章节浏览不受影响。
+ * 只给「已经在书名/简介里命中的书」补正文片段。
+ * 走 classic_chunks 的 item_id 索引，只扫这几本书的分章正文（全书，不限前 3 万字）。
+ */
+export async function enrichClassicSnippets(query: string, ids: string[]): Promise<ClassicSearchHit[]> {
+  const needle = query.trim();
+  if (needle.length < 1 || ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(", ");
+  const sql = `
+    SELECT
+      c.item_id AS itemId,
+      c.chapter_title AS chapterTitle,
+      i.name AS name,
+      i.source AS source,
+      v.commentary AS commentary,
+      v.indication AS indication,
+      c.body AS body
+    FROM classic_chunks c
+    JOIN kb_items i ON i.id = c.item_id
+    JOIN kb_item_versions v ON v.kb_item_id = i.id AND v.version = i.current_version
+    WHERE i.type = 'classic'
+      AND i.status = 'active'
+      AND c.item_id IN (${placeholders})
+      AND instr(c.body, ?) > 0
+    ORDER BY c.chapter_no ASC
+    LIMIT ?
+  `;
+  const rows = await prisma.$queryRawUnsafe<ClassicFtsRow[]>(sql, ...ids, needle, ids.length);
+  const seen = new Set<string>();
+  const hits: ClassicSearchHit[] = [];
+  for (const row of rows) {
+    if (seen.has(row.itemId)) continue;
+    seen.add(row.itemId);
+    hits.push(mapFtsRow(row, needle));
+  }
+  return hits;
+}
+
+/**
+ * 正文全文检索：走 classic_fts 的 FTS5 索引（覆盖全书，不再只看前 3 万字）。
+ * 中文查询被拆成逐字短语，FTS5 用位置列表匹配相邻字，典型查询 10-40ms；
+ * 单字查询命中面很大会被 FTS_ROW_LIMIT 截断，再按书去重取前 limit 本。
  */
 export async function searchClassicText(query: string, limit = 6): Promise<ClassicSearchHit[]> {
   const needle = query.trim();
-  if (needle.length < 2) return [];
+  if (needle.length < 1) return [];
+
+  const ftsQuery = buildClassicFtsQuery(needle);
+  if (!ftsQuery) return [];
 
   const cache = textCache();
-  const cached = cache.get(needle);
+  const cacheKey = `${limit}:${needle}`;
+  const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.at < TEXT_CACHE_TTL_MS) return cached.hits;
 
   const sql = `
-    SELECT ${SELECT_TEXT_FIELDS}
-    FROM kb_item_versions v
-    JOIN kb_items i ON i.id = v.kb_item_id
-    WHERE i.type = 'classic'
+    SELECT
+      c.item_id AS itemId,
+      c.chapter_title AS chapterTitle,
+      i.name AS name,
+      i.source AS source,
+      v.commentary AS commentary,
+      v.indication AS indication,
+      c.body AS body
+    FROM classic_fts
+    JOIN classic_chunks c ON c.rowid = classic_fts.rowid
+    JOIN kb_items i ON i.id = c.item_id
+    JOIN kb_item_versions v ON v.kb_item_id = i.id AND v.version = i.current_version
+    WHERE classic_fts MATCH ?
+      AND i.type = 'classic'
       AND i.status = 'active'
-      AND v.version = i.current_version
-      AND instr(substr(v.raw_json, 1, ?), ?) > 0
-    ORDER BY i.name ASC
     LIMIT ?
   `;
-  const rows = await prisma.$queryRawUnsafe<ClassicTextRow[]>(
-    sql,
-    SEARCH_WINDOW_CHARS,
-    needle,
-    SEARCH_WINDOW_CHARS,
-    needle,
-    SEARCH_WINDOW_CHARS,
-    needle,
-    limit,
-  );
-  const hits = rows
-    .filter((row) => Number(row.match_pos ?? 0) > 0)
-    .sort((a, b) => Number(a.match_pos ?? 0) - Number(b.match_pos ?? 0))
-    .map(mapTextRow);
+
+  const rows = await prisma.$queryRawUnsafe<ClassicFtsRow[]>(sql, ftsQuery, FTS_ROW_LIMIT);
+
+  const byItem = new Map<string, ClassicFtsRow>();
+  for (const row of rows) {
+    const current = byItem.get(row.itemId);
+    if (!current) {
+      byItem.set(row.itemId, row);
+      continue;
+    }
+    // 书名里直接有查询词的优先，其次保留先命中的那一章
+    if (!current.name.includes(needle) && row.name.includes(needle)) byItem.set(row.itemId, row);
+  }
+
+  const hits = Array.from(byItem.values())
+    .sort((a, b) => {
+      const aName = a.name.includes(needle) ? 1 : 0;
+      const bName = b.name.includes(needle) ? 1 : 0;
+      if (aName !== bName) return bName - aName;
+      return a.name.localeCompare(b.name, "zh-Hans-CN");
+    })
+    .slice(0, limit)
+    .map((row) => mapFtsRow(row, needle));
 
   if (cache.size >= TEXT_CACHE_MAX) cache.clear();
-  cache.set(needle, { at: Date.now(), hits });
+  cache.set(cacheKey, { at: Date.now(), hits });
   return hits;
 }
 

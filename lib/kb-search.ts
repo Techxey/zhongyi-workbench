@@ -276,10 +276,10 @@ export type KbSearchContext = {
 const BODY_HIT_BONUS = 500;
 
 /**
- * 古籍正文命中：SQLite 的 instr 扫 raw_json，不在内存索引里做。
- * 分两步（都在 lib/kb-classic.ts 里）：
- * 1) 给书名/简介已经命中的前 10 部书补正文片段（按 id 查，几毫秒）；
- * 2) 再做一次「正文检索」发现只在正文里出现的书（限量 6 条，按书名顺序命中即停）。
+ * 古籍正文命中：走 classic_fts（SQLite FTS5，正文按章切块、逐字分词，覆盖全书），
+ * 不在内存索引里做。分两步（都在 lib/kb-classic.ts 里）：
+ * 1) 给书名/简介已经命中的前 10 部书补正文片段（按 item_id 走索引，几毫秒）；
+ * 2) 再做一次 FTS 全文检索，发现只在正文里出现的书（限量 6 条）。
  * 命中片段挂到 classics 页签的 hit.snippet 上。
  */
 async function mergeClassicTextHits(tabs: Record<KbItemType, KbTabResult>, query: string) {
@@ -395,9 +395,9 @@ export async function searchKb(query: string, context: KbSearchContext = {}): Pr
     tabs[key].hits = tabs[key].hits.slice(0, 20);
   }
 
-  // 古籍正文检索：搜条文（如「太阳之为病」）时书名/简介往往不命中，必须再扫一遍正文。
-  // 不论书名命中多少都补一次（SQL 只扫前 3 万字、返回 8 条，热查询约 100ms），
-  // 否则「简介里恰好出现关键词的 20 部书」会把正文片段挤掉。
+  // 古籍正文检索：搜条文（如「太阳之为病」）时书名/简介往往不命中，必须再查一次 FTS5。
+  // 不论书名命中多少都补一次（FTS 索引约 10-40ms，常见词最多 150ms），
+  // 否则「简介里恰好出现关键词的 20 部书」会把正文命中挤掉。
   if (query.trim().length >= 2) {
     await mergeClassicTextHits(tabs, query);
   }
