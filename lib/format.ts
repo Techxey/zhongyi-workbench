@@ -71,9 +71,10 @@ export function pinyinOf(name: string): { full: string; initials: string } {
 export type SearchablePatient = {
   name: string;
   phone?: string | null;
+  cardNo?: string | null;
 };
 
-/** 姓名 / 手机号后四位 / 拼音首字母，任一命中即算匹配 */
+/** 姓名 / 手机号后四位 / 门诊卡号 / 拼音首字母，任一命中即算匹配 */
 export function matchesQuery(patient: SearchablePatient, rawQuery: string): boolean {
   const q = rawQuery.trim().toLowerCase();
   if (!q) return true;
@@ -82,6 +83,9 @@ export function matchesQuery(patient: SearchablePatient, rawQuery: string): bool
 
   const phone = (patient.phone ?? "").replace(/\D/g, "");
   if (phone && (phone.includes(q) || phone.slice(-4).includes(q))) return true;
+
+  const cardNo = (patient.cardNo ?? "").toLowerCase();
+  if (cardNo && cardNo.includes(q)) return true;
 
   const { full, initials } = pinyinOf(patient.name);
   if (full.includes(q) || initials.includes(q)) return true;

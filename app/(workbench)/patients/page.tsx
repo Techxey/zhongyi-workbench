@@ -22,6 +22,7 @@ export default async function PatientsPage() {
   const patients: DirectoryPatient[] = rows.map((p) => ({
     id: p.id,
     name: p.name,
+    cardNo: p.cardNo,
     gender: p.gender,
     birthYear: p.birthYear,
     phone: p.phone,

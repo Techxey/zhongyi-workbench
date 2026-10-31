@@ -73,6 +73,7 @@ export type KbBatchRow = {
 const TABS = [
   { key: "formula", label: "方剂", unit: "首" },
   { key: "herb", label: "中药", unit: "味" },
+  { key: "case", label: "医案", unit: "则" },
   { key: "classic", label: "古籍", unit: "部" },
   { key: "alias", label: "别名", unit: "条" },
 ] as const;
@@ -210,6 +211,7 @@ export function KbBrowser({
     () => ({
       formula: items.filter((item) => item.type === "formula").length,
       herb: items.filter((item) => item.type === "herb").length,
+      case: items.filter((item) => item.type === "case").length,
       classic: items.filter((item) => item.type === "classic").length,
       alias: aliases.length,
     }),
@@ -343,7 +345,7 @@ export function KbBrowser({
       </div>
 
       {bodyMode ? (
-        <section className="card overflow-hidden">
+        <section className="card overflow-hidden max-lg:overflow-x-auto">
           {bodyLoading && !bodyHits ? (
             <div className="px-5 py-10 text-center text-[13px] text-ink-3">正在检索全书正文…</div>
           ) : bodyError ? (
@@ -360,7 +362,7 @@ export function KbBrowser({
             </div>
           ) : (
             <>
-              <table className="w-full border-collapse text-[13px]">
+              <table className="w-full min-w-[720px] border-collapse text-[13px]">
                 <thead>
                   <tr className="text-left text-[12px] text-ink-3">
                     <th className="font-normal px-4 h-10 border-b border-line-2 w-[22%]">书名</th>
@@ -418,13 +420,13 @@ export function KbBrowser({
           )}
         </section>
       ) : tab === "alias" ? (
-        <section className="card overflow-hidden">
+        <section className="card overflow-hidden max-lg:overflow-x-auto">
           {filteredAliases.length === 0 ? (
             <p className="px-5 py-12 text-center text-[13px] text-ink-3">
               还没有别名。导入方剂时会一并写入别名；症状/证型词在「设置 · 接诊词库」里维护。
             </p>
           ) : (
-            <table className="w-full border-collapse text-[13px]">
+            <table className="w-full min-w-[720px] border-collapse text-[13px]">
               <thead>
                 <tr className="text-left text-[12px] text-ink-3">
                   <th className="font-normal px-4 h-10 border-b border-line-2">别名</th>
@@ -465,8 +467,8 @@ export function KbBrowser({
           </Link>
         </section>
       ) : (
-        <section className="card overflow-hidden">
-          <table className="w-full border-collapse">
+        <section className="card overflow-hidden max-lg:overflow-x-auto">
+          <table className="w-full min-w-[720px] border-collapse">
             <thead>
               <tr className="text-left text-[12px] text-ink-3">
                 <th className="font-normal px-4 h-10 border-b border-line-2 w-[26%]">
@@ -476,7 +478,7 @@ export function KbBrowser({
                   {tab === "classic" ? "作者" : "出处"}
                 </th>
                 <th className="font-normal px-4 h-10 border-b border-line-2 w-[26%]">
-                  {tab === "classic" ? "字数 · 章节" : tab === "formula" ? "味数 · 功效" : "功效"}
+                  {tab === "classic" ? "字数 · 章节" : tab === "formula" || tab === "case" ? "味数 · 功效" : "功效"}
                 </th>
                 <th className="font-normal px-4 h-10 border-b border-line-2 w-[10%]">版本</th>
                 <th className="font-normal px-4 h-10 border-b border-line-2 w-[14%]">更新时间</th>
@@ -508,7 +510,7 @@ export function KbBrowser({
                     </td>
                   ) : (
                     <td className="px-4 py-2 text-[12.5px] text-ink-2 truncate max-w-[300px]">
-                      {tab === "formula" ? `${item.herbCount} 味 · ` : ""}
+                      {tab === "formula" || tab === "case" ? `${item.herbCount} 味 · ` : ""}
                       {item.efficacy || item.indication || "—"}
                     </td>
                   )}

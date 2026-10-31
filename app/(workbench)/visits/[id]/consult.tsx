@@ -30,7 +30,7 @@ import {
 } from "@/lib/vocabulary";
 import { bumpConsultTerms } from "@/lib/vocabulary-actions";
 import { registerKbInsert, setKbContext, type KbInsertPayload } from "@/lib/kb-bridge";
-import { saveAsTemplate, saveVisit, deleteTemplate, saveDraft } from "./actions";
+import { saveAsTemplate, saveVisit, deleteTemplate, saveDraft, saveVisitAsCase } from "./actions";
 
 export type KbFormula = {
   id: string;
@@ -126,6 +126,7 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
   const [saving, setSaving] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [caseSaving, setCaseSaving] = useState(false);
   const [kbPending, setKbPending] = useState<KbInsertPayload | null>(null);
   const [lastOpen, setLastOpen] = useState(false);
   const [symQuery, setSymQuery] = useState("");
@@ -373,6 +374,19 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
     }
   };
   saveRef.current = handleSave;
+
+  const handleSaveAsCase = async () => {
+    if (caseSaving) return;
+    setCaseSaving(true);
+    try {
+      const result = await saveVisitAsCase(data.visitId);
+      setToast(result.message);
+    } catch {
+      setToast("存为医案失败，请稍后再试");
+    } finally {
+      setCaseSaving(false);
+    }
+  };
 
   // 键盘流：Ctrl+Enter 保存并打印（Ctrl+K 由全局检索浮层接管）
   useEffect(() => {
@@ -628,9 +642,20 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
               返回
             </Link>
             {revisionNo > 0 ? (
-              <Link href={`/visits/${data.visitId}/revisions`} className="btn btn-quiet">
-                修订历史
-              </Link>
+              <>
+                <Link href={`/visits/${data.visitId}/revisions`} className="btn btn-quiet">
+                  修订历史
+                </Link>
+                <button
+                  type="button"
+                  className="btn btn-quiet"
+                  onClick={() => void handleSaveAsCase()}
+                  disabled={caseSaving}
+                  title="把这次病历收进知识库医案，以后可检索与带入"
+                >
+                  {caseSaving ? "存中…" : "存为医案"}
+                </button>
+              </>
             ) : null}
             <button
               type="button"
@@ -698,7 +723,7 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
       <div
         ref={formRef}
         onKeyDown={onFormKeyDown}
-        className="grid grid-cols-[minmax(0,1fr)_406px] items-start"
+        className="grid grid-cols-[minmax(0,1fr)_406px] items-start max-lg:grid-cols-1"
       >
         <div className="px-[26px] py-5 space-y-[13px] min-w-0">
           {/* 1 主诉 */}
@@ -1009,7 +1034,7 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
         </div>
 
         {/* 右栏 · 处方：跟着页面滚动钉住，改左栏时处方始终在视野里 */}
-        <aside className="sticky top-[74px] max-h-[calc(100vh-74px)] overflow-y-auto bg-panel border-l border-line px-5 py-5 space-y-3.5">
+        <aside className="sticky top-[74px] max-h-[calc(100vh-74px)] overflow-y-auto bg-panel border-l border-line px-5 py-5 space-y-3.5 max-lg:static max-lg:max-h-none max-lg:border-l-0 max-lg:border-t max-lg:px-0">
           <div className="flex items-baseline justify-between">
             <h2 className="section-title">处方</h2>
             <button

@@ -16,6 +16,15 @@ export const patientInputSchema = z.object({
     .trim()
     .min(1, "请填写姓名")
     .max(20, "姓名不超过 20 个字"),
+  cardNo: z
+    .string()
+    .trim()
+    .max(32, "卡号不超过 32 个字符")
+    .optional()
+    .transform((v) => (v ? v : null))
+    .refine((v) => v === null || /^[A-Za-z0-9_-]{1,32}$/.test(v), {
+      message: "卡号可用字母、数字、短横线下划线",
+    }),
   gender: z.enum(["male", "female", "unknown"], { message: "请选择性别" }),
   birthYear: z
     .string()
@@ -42,6 +51,7 @@ export type PatientInput = z.infer<typeof patientInputSchema>;
 /** 表单里拿到的都是字符串，校验与转型交给 schema */
 export type PatientFormRaw = {
   name: string;
+  cardNo: string;
   gender: string;
   birthYear: string;
   phone: string;

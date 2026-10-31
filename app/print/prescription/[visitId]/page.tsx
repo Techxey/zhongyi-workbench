@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { ageOf, formatDate, genderLabel } from "@/lib/format";
+import { printPageStyle } from "@/lib/print";
+import { loadPrintOptions } from "@/lib/print-server";
 import { BackLink, PrintButton } from "./print-button";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +15,8 @@ export default async function PrescriptionPrintPage({
 }) {
   await requireUser();
   const { visitId } = await params;
+  const print = await loadPrintOptions();
+  const pageStyle = <style dangerouslySetInnerHTML={{ __html: printPageStyle(print) }} />;
 
   const visit = await prisma.visit.findUnique({
     where: { id: visitId },
@@ -27,6 +31,7 @@ export default async function PrescriptionPrintPage({
   if (!revision) {
     return (
       <div className="print-page">
+        {pageStyle}
         <div className="print-toolbar no-print">
           <BackLink />
         </div>
@@ -68,6 +73,7 @@ export default async function PrescriptionPrintPage({
 
   return (
     <div className="print-page">
+      {pageStyle}
       <div className="print-toolbar no-print">
         <BackLink />
         <PrintButton />
@@ -88,7 +94,9 @@ export default async function PrescriptionPrintPage({
           </span>
           <span>{genderLabel(visit.patient.gender)}</span>
           <span>{visit.patient.birthYear ? `${ageOf(visit.patient.birthYear)}` : "年龄未填"}</span>
-          {visit.patient.phone ? <span>电话 {maskedTail(visit.patient.phone)}</span> : null}
+          {print.showPhone && visit.patient.phone ? (
+            <span>电话 {maskedTail(visit.patient.phone)}</span>
+          ) : null}
         </div>
 
         <div className="diagnosis">
@@ -100,7 +108,7 @@ export default async function PrescriptionPrintPage({
             <span className="k">治法：</span>
             {revision.treatment || "—"}
           </div>
-          {fourDiagnosis ? (
+          {print.showFourDiagnosis && fourDiagnosis ? (
             <div>
               <span className="k">四诊：</span>
               {fourDiagnosis}
@@ -143,9 +151,7 @@ export default async function PrescriptionPrintPage({
           <span>日期：{formatDate(visit.visitAt)}</span>
         </div>
 
-        <p className="foot">
-          本处方由医生本人开具，系统不提供自动辨证与自动出方。处方内容为本次就诊快照，后续修订不改变已打印内容。
-        </p>
+        {print.footer ? <p className="foot">{print.footer}</p> : null}
       </div>
     </div>
   );

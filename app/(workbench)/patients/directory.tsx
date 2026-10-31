@@ -7,6 +7,7 @@ import { ageOf, formatDate, genderLabel, maskPhone, matchesQuery, truncate } fro
 export type DirectoryPatient = {
   id: string;
   name: string;
+  cardNo: string | null;
   gender: string | null;
   birthYear: number | null;
   phone: string | null;
@@ -20,7 +21,10 @@ export function PatientDirectory({ patients }: { patients: DirectoryPatient[] })
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(
-    () => patients.filter((p) => matchesQuery({ name: p.name, phone: p.phone }, query)),
+    () =>
+      patients.filter((p) =>
+        matchesQuery({ name: p.name, phone: p.phone, cardNo: p.cardNo }, query),
+      ),
     [patients, query],
   );
 
@@ -63,7 +67,7 @@ export function PatientDirectory({ patients }: { patients: DirectoryPatient[] })
             className="input pl-9"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="姓名 / 手机号后四位 / 拼音首字母"
+            placeholder="姓名 / 手机号后四位 / 卡号 / 拼音首字母"
             aria-label="搜索患者"
           />
           {query ? (
@@ -91,8 +95,9 @@ export function PatientDirectory({ patients }: { patients: DirectoryPatient[] })
         ) : null}
       </div>
 
-      <div className="card overflow-hidden">
-        <table className="w-full border-collapse">
+      <div className="card overflow-hidden max-lg:overflow-x-auto">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] border-collapse">
           <thead>
             <tr className="text-left text-[12px] text-ink-3">
               <th className="font-normal px-4 h-10 border-b border-line-2 w-[26%]">姓名</th>
@@ -113,6 +118,7 @@ export function PatientDirectory({ patients }: { patients: DirectoryPatient[] })
                     </span>
                     <span className="text-[11.5px] text-ink-4 num mt-0.5">
                       {p.phone ? maskPhone(p.phone) : "未留手机号"}
+                      {p.cardNo ? <span className="text-ink-4"> · 卡号 {p.cardNo}</span> : null}
                     </span>
                   </Link>
                 </td>
@@ -149,13 +155,14 @@ export function PatientDirectory({ patients }: { patients: DirectoryPatient[] })
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
 
         {filtered.length === 0 ? (
           <div className="px-6 py-14 text-center">
             <p className="text-[13.5px] text-ink-2 mb-1">没有匹配「{query}」的患者</p>
             <p className="text-[12.5px] text-ink-3 mb-4">
-              可试姓名、手机号后四位，或拼音首字母（如 zsf）
+              可试姓名、手机号后四位、门诊卡号，或拼音首字母（如 zsf）
             </p>
             <button type="button" className="btn btn-ghost" onClick={() => setQuery("")}>
               清除搜索

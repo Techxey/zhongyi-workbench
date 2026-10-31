@@ -8,9 +8,11 @@ import { ThemeSegmented } from "@/components/theme-toggle";
 import { DEFAULT_USAGE } from "@/lib/visit";
 import { VOCAB_CATEGORIES, VOCAB_LABELS } from "@/lib/vocabulary";
 import { ensureDailyBackup, listBackups } from "@/lib/backup";
+import { loadPrintOptions } from "@/lib/print-server";
 import { BackupCard } from "./backup-card";
 import { ClinicForm } from "./clinic-form";
 import { PasswordForm } from "./password-form";
+import { PrintForm } from "./print-form";
 import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
@@ -23,17 +25,27 @@ export default async function SettingsPage() {
   const user = await requireUser();
   const theme = await getThemeChoice();
 
-  const [retention, clinicName, clinicDoctor, defaultUsage, patientCount, kbCount, visitCount, vocabCounts] =
-    await Promise.all([
-      prisma.setting.findUnique({ where: { key: "backup_retention_days" } }),
-      prisma.setting.findUnique({ where: { key: "clinic_name" } }),
-      prisma.setting.findUnique({ where: { key: "clinic_doctor" } }),
-      prisma.setting.findUnique({ where: { key: "default_usage" } }),
-      prisma.patient.count(),
-      prisma.kbItem.count(),
-      prisma.visit.count(),
-      prisma.consultTerm.groupBy({ by: ["category"], _count: { _all: true } }),
-    ]);
+  const [
+    retention,
+    clinicName,
+    clinicDoctor,
+    defaultUsage,
+    patientCount,
+    kbCount,
+    visitCount,
+    vocabCounts,
+    printOptions,
+  ] = await Promise.all([
+    prisma.setting.findUnique({ where: { key: "backup_retention_days" } }),
+    prisma.setting.findUnique({ where: { key: "clinic_name" } }),
+    prisma.setting.findUnique({ where: { key: "clinic_doctor" } }),
+    prisma.setting.findUnique({ where: { key: "default_usage" } }),
+    prisma.patient.count(),
+    prisma.kbItem.count(),
+    prisma.visit.count(),
+    prisma.consultTerm.groupBy({ by: ["category"], _count: { _all: true } }),
+    loadPrintOptions(),
+  ]);
 
   const vocabSummary = VOCAB_CATEGORIES.map((category) => ({
     category,
@@ -109,6 +121,14 @@ export default async function SettingsPage() {
               打开词库管理
             </Link>
           </div>
+        </section>
+
+        <section className="card">
+          <div className="px-5 h-[50px] flex items-center border-b border-line-2">
+            <h2 className="section-title">打印版式</h2>
+            <span className="ml-2 text-[11.5px] text-ink-4">处方笺的纸张、字号与页脚</span>
+          </div>
+          <PrintForm options={printOptions} />
         </section>
 
         <section className="card">

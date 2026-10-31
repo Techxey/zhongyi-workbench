@@ -277,3 +277,114 @@ export async function deleteTemplate(id: string): Promise<DeleteTemplateResult> 
   revalidatePath("/visits", "layout");
   return { ok: true, message: `已删除「${template.name}」` };
 }
+
+export type SaveCaseResult = { ok: boolean; message: string };
+
+/**
+ * 把已签名病历存成医案（knowledge type="case"）：
+ * 名称 = 主诉关键词 · 证型（患者首发），组成取当时处方，方便以后检索与带入。
+ */
+export async function saveVisitAsCase(visitId: string): Promise<SaveCaseResult> {
+  const user = await requireUser();
+
+  const visit = await prisma.visit.findUnique({
+    where: { id: visitId },
+    include: {
+      patient: { select: { name: true } },
+      revisions: { orderBy: { revisionNo: "desc" }, take: 1 },
+    },
+  });
+  if (!visit) return { ok: false, message: "就诊记录不存在" };
+
+  const revision = visit.revisions[0];
+  if (!revision) return { ok: false, message: "还没有签名的病历，先保存并签名" };
+
+  const prescription = await prisma.prescription.findFirst({
+    where: { visitRevisionId: revision.id },
+    orderBy: { createdAt: "desc" },
+    include: { items: { orderBy: { sortNo: "asc" } } },
+  });
+  if (!prescription || prescription.items.length === 0) {
+    return { ok: false, message: "这次没有开方，暂不能存为医案" };
+  }
+
+  const chief = (revision.chiefComplaint ?? "").trim();
+  const keywords = chief
+    .replace(/\s+/g, " ")
+    .replace(/[，。；;、,]+/g, " · ")
+    .trim()
+    .slice(0, 24);
+  const name = `${keywords || "病例"}（${revision.syndrome || "未辨证"}）`;
+  const source = "我的医案";
+  const composition = prescription.items.map((item) => ({
+    name: item.herbName,
+    dose: item.dose ?? "",
+  }));
+
+  const existing = await prisma.kbItem.findFirst({ where: { type: "case", name, source } });
+  if (existing) return { ok: false, message: `已经有同名医案「${name}」` };
+
+  const now = new Date().toISOString();
+  const item = await prisma.kbItem.create({
+    data: {
+      type: "case",
+      name,
+      source,
+      status: "active",
+      currentVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+  await prisma.kbItemVersion.create({
+    data: {
+      kbItemId: item.id,
+      version: 1,
+      compositionJson: JSON.stringify(composition),
+      efficacy: revision.treatment ?? "",
+      indication: [chief, (revision.presentIllness ?? "").slice(0, 120)]
+        .filter(Boolean)
+        .join("；"),
+      usageText: prescription.usageText ?? "",
+      commentary: (revision.advice ?? "").slice(0, 200),
+      rawJson: JSON.stringify({
+        patient: visit.patient.name,
+        visitAt: visit.visitAt,
+        visitNo: visit.visitNo,
+        syndrome: revision.syndrome,
+        treatment: revision.treatment,
+        tongue: revision.tongueJson,
+        pulse: revision.pulseJson,
+        symptoms: revision.symptomsJson,
+      }),
+      createdAt: now,
+    },
+  });
+
+  const terms = [revision.syndrome ?? "", ...(JSON.parse(revision.symptomsJson || "[]") as string[])]
+    .filter(Boolean)
+    .slice(0, 8);
+  for (const term of terms) {
+    await prisma.kbAlias.create({
+      data: {
+        kbItemId: item.id,
+        term,
+        normTerm: name,
+        aliasType: "case",
+        weight: 1,
+      },
+    });
+  }
+
+  await writeAudit({
+    entityType: "kb_item",
+    entityId: item.id,
+    action: "create",
+    after: { type: "case", name, fromVisit: visitId },
+    operatorId: user.id,
+  });
+
+  revalidatePath("/kb");
+  revalidatePath("/visits", "layout");
+  return { ok: true, message: `已存为医案「${name}」` };
+}

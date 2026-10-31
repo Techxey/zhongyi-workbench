@@ -7,6 +7,7 @@ import { requireUser, destroySession } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { createBackup, pruneBackups } from "@/lib/backup";
+import { PRINT_OPTIONS_KEY } from "@/lib/print-server";
 
 export type SettingsState = { ok?: boolean; error?: string; message?: string };
 
@@ -135,6 +136,52 @@ export async function saveClinic(
 
   revalidatePath("/settings");
   revalidatePath("/visits", "layout");
+  revalidatePath("/print", "layout");
+  return { ok: true };
+}
+
+/** 打印版式：纸张、字号、显示项、页脚声明，存在 Setting print_options（JSON） */
+export async function savePrintSettings(
+  _prev: SettingsState,
+  formData: FormData,
+): Promise<SettingsState> {
+  const user = await requireUser();
+
+  const paper = String(formData.get("paper") ?? "A5") === "A4" ? "A4" : "A5";
+  const fontSizeRaw = String(formData.get("fontSize") ?? "normal");
+  const fontSize =
+    fontSizeRaw === "small" || fontSizeRaw === "large" ? fontSizeRaw : "normal";
+  const footer = String(formData.get("footer") ?? "").trim();
+  if (footer.length > 160) return { error: "页脚声明最多 160 个字" };
+
+  const next = {
+    paper,
+    fontSize,
+    showFourDiagnosis: formData.get("showFourDiagnosis") === "on",
+    showPhone: formData.get("showPhone") === "on",
+    footer,
+  };
+
+  const before = await prisma.setting.findUnique({ where: { key: PRINT_OPTIONS_KEY } });
+  await prisma.setting.upsert({
+    where: { key: PRINT_OPTIONS_KEY },
+    create: {
+      key: PRINT_OPTIONS_KEY,
+      value: JSON.stringify(next),
+      updatedAt: new Date().toISOString(),
+    },
+    update: { value: JSON.stringify(next), updatedAt: new Date().toISOString() },
+  });
+  await writeAudit({
+    entityType: "export",
+    entityId: `settings:${PRINT_OPTIONS_KEY}`,
+    action: "update",
+    before: before ? { value: before.value } : undefined,
+    after: { value: JSON.stringify(next) },
+    operatorId: user.id,
+  });
+
+  revalidatePath("/settings");
   revalidatePath("/print", "layout");
   return { ok: true };
 }

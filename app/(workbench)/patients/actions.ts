@@ -12,9 +12,14 @@ import {
   type PatientFormRaw,
 } from "@/lib/validation";
 
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "P2002");
+}
+
 function readPatientForm(formData: FormData): PatientFormRaw {
   return {
     name: String(formData.get("name") ?? ""),
+    cardNo: String(formData.get("cardNo") ?? ""),
     gender: String(formData.get("gender") ?? ""),
     birthYear: String(formData.get("birthYear") ?? ""),
     phone: String(formData.get("phone") ?? ""),
@@ -33,9 +38,21 @@ export async function createPatient(_prev: FormState, formData: FormData): Promi
   }
 
   const now = new Date().toISOString();
-  const patient = await prisma.patient.create({
-    data: { ...parsed.data, createdAt: now, updatedAt: now },
-  });
+  let patient;
+  try {
+    patient = await prisma.patient.create({
+      data: { ...parsed.data, createdAt: now, updatedAt: now },
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return {
+        status: "error",
+        message: "请检查标红的字段",
+        fieldErrors: { cardNo: "这个卡号已被其他患者占用" },
+      };
+    }
+    throw error;
+  }
 
   await writeAudit({
     entityType: "patient",
@@ -63,10 +80,21 @@ export async function updatePatient(
   const before = await prisma.patient.findUnique({ where: { id: patientId } });
   if (!before) return { status: "error", message: "患者不存在" };
 
-  await prisma.patient.update({
-    where: { id: patientId },
-    data: { ...parsed.data, updatedAt: new Date().toISOString() },
-  });
+  try {
+    await prisma.patient.update({
+      where: { id: patientId },
+      data: { ...parsed.data, updatedAt: new Date().toISOString() },
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return {
+        status: "error",
+        message: "请检查标红的字段",
+        fieldErrors: { cardNo: "这个卡号已被其他患者占用" },
+      };
+    }
+    throw error;
+  }
 
   await writeAudit({
     entityType: "patient",

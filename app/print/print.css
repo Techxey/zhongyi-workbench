@@ -5,6 +5,7 @@
 
 /* 打印页不用应用外壳，独立排版；屏幕预览时给一层纸感背景 */
 .print-page {
+  --print-base: 12px;
   min-height: 100vh;
   background: #e9e6df;
   padding: 24px 0 40px;
@@ -15,15 +16,16 @@
 }
 
 .print-toolbar {
-  width: 148mm;
+  width: var(--sheet-w, 148mm);
   display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
 
 .sheet {
-  width: 148mm;
-  min-height: 200mm;
+  width: var(--sheet-w, 148mm);
+  min-height: var(--sheet-h, 200mm);
+  font-size: var(--print-base, 12px);
   box-sizing: border-box;
   background: #fff;
   color: #1d1b18;
@@ -38,14 +40,14 @@
 .sheet .clinic {
   text-align: center;
   font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
-  font-size: 17px;
+  font-size: 1.42em;
   letter-spacing: 0.28em;
   padding-bottom: 6px;
 }
 
 .sheet .clinic-sub {
   text-align: center;
-  font-size: 11px;
+  font-size: 0.92em;
   color: #6d6960;
   letter-spacing: 0.32em;
   padding-bottom: 9px;
@@ -55,7 +57,7 @@
 .sheet .meta {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 0.92em;
   color: #4a463f;
   padding: 7px 0 3px;
 }
@@ -63,7 +65,7 @@
 .sheet .patient {
   display: flex;
   gap: 18px;
-  font-size: 12px;
+  font-size: 1em;
   padding: 2px 0 6px;
   border-bottom: 1px dashed #cfcabf;
 }
@@ -73,7 +75,7 @@
 }
 
 .sheet .diagnosis {
-  font-size: 12px;
+  font-size: 1em;
   padding: 6px 0;
   line-height: 1.75;
 }
@@ -85,7 +87,7 @@
 
 .sheet .rx-title {
   font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
-  font-size: 15px;
+  font-size: 1.25em;
   letter-spacing: 0.34em;
   margin: 6px 0 4px;
 }
@@ -101,7 +103,7 @@
 .sheet .rx-item {
   display: flex;
   justify-content: space-between;
-  font-size: 11.5px;
+  font-size: 0.96em;
   line-height: 22px;
   padding-right: 2mm;
   break-inside: avoid;
@@ -109,17 +111,17 @@
 
 .sheet .rx-item .name {
   font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
-  font-size: 12px;
+  font-size: 1.04em;
 }
 
 .sheet .usage {
-  font-size: 11.5px;
+  font-size: 0.96em;
   line-height: 1.95;
   padding-top: 6px;
 }
 
 .sheet .advice {
-  font-size: 11.5px;
+  font-size: 0.96em;
   line-height: 1.9;
   color: #33302a;
   white-space: pre-wrap;
@@ -130,7 +132,7 @@
   margin-top: 14px;
   display: flex;
   justify-content: space-between;
-  font-size: 11.5px;
+  font-size: 0.96em;
   color: #33302a;
 }
 
@@ -138,7 +140,7 @@
   margin-top: 10px;
   border-top: 1px dashed #cfcabf;
   padding-top: 5px;
-  font-size: 9.5px;
+  font-size: 0.79em;
   color: #8a857b;
   line-height: 1.7;
 }

@@ -21,6 +21,7 @@ const CONSTITUTIONS = [
 export type PatientDetail = {
   id: string;
   name: string;
+  cardNo: string | null;
   gender: string | null;
   birthYear: number | null;
   phone: string | null;
@@ -81,6 +82,12 @@ export function PatientInfoCard({ patient }: { patient: PatientDetail }) {
                   查看完整
                 </button>
               ) : null}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[11.5px] text-ink-4 mb-0.5">门诊卡号</dt>
+            <dd className="text-[13.5px] text-ink num">
+              {patient.cardNo || <span className="text-ink-4">未绑卡</span>}
             </dd>
           </div>
           <div>
@@ -176,6 +183,15 @@ export function PatientInfoCard({ patient }: { patient: PatientDetail }) {
                 </option>
               ))}
             </select>
+          </Field>
+          <Field label="门诊卡号" error={fe.cardNo}>
+            <input
+              name="cardNo"
+              className="input num"
+              defaultValue={patient.cardNo ?? ""}
+              placeholder="可选，如 A0001"
+              aria-invalid={!!fe.cardNo}
+            />
           </Field>
           <div />
           <div className="col-span-2">

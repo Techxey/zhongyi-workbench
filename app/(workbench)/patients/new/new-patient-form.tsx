@@ -128,6 +128,16 @@ export function NewPatientForm() {
             />
           </Field>
 
+          <Field label="门诊卡号" error={errors.cardNo} hint="可选，扫卡/手填都行">
+            <input
+              name="cardNo"
+              className="input num"
+              placeholder="如 A0001"
+              aria-invalid={!!errors.cardNo}
+              onChange={(e) => clearError("cardNo")}
+            />
+          </Field>
+
           <Field label="体质" error={errors.constitution}>
             <select name="constitution" className="input" defaultValue="">
               <option value="">未辨识</option>
@@ -186,11 +196,13 @@ function Field({
   label,
   required,
   error,
+  hint,
   children,
 }: {
   label: string;
   required?: boolean;
   error?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -198,6 +210,7 @@ function Field({
       <label className="field-label">
         {label}
         {required ? <span className="text-danger ml-0.5">*</span> : null}
+        {hint ? <span className="ml-2 text-[11px] font-normal text-ink-4">{hint}</span> : null}
       </label>
       {children}
       {error ? <p className="field-error">{error}</p> : null}

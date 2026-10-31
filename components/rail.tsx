@@ -86,20 +86,20 @@ export function Rail({ userName }: { userName: string }) {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed inset-y-0 left-0 w-[78px] bg-rail text-white/60 flex flex-col items-center z-30">
+    <aside className="fixed inset-y-0 left-0 w-[78px] bg-rail text-white/60 flex flex-col items-center z-30 max-lg:sticky max-lg:top-0 max-lg:inset-auto max-lg:w-full max-lg:h-[56px] max-lg:flex-row max-lg:px-2.5 max-lg:gap-2">
       <Link
         href="/patients"
-        className="mt-4 mb-6 w-9 h-9 rounded-[9px] bg-white/10 grid place-items-center font-serif text-[17px] text-rail-brand hover:bg-white/15 transition-colors"
+        className="mt-4 mb-6 max-lg:mt-0 max-lg:mb-0 w-9 h-9 rounded-[9px] bg-white/10 grid place-items-center font-serif text-[17px] text-rail-brand hover:bg-white/15 transition-colors"
         title="中医诊疗工作台"
       >
         医
       </Link>
 
-      <nav className="flex flex-col items-center gap-1.5 w-full px-2">
+      <nav className="flex flex-col items-center gap-1.5 w-full px-2 max-lg:flex-row max-lg:gap-1 max-lg:w-auto max-lg:px-0">
         {NAV.map((item) => {
           const active = item.href ? pathname.startsWith(item.href) : false;
           const base =
-            "relative w-full h-[52px] rounded-[9px] flex flex-col items-center justify-center gap-1 text-[10.5px] tracking-wide transition-colors";
+            "relative w-full h-[52px] rounded-[9px] flex flex-col items-center justify-center gap-1 text-[10.5px] tracking-wide transition-colors max-lg:w-11 max-lg:h-11 max-lg:px-0";
           const classes = active
             ? `${base} bg-white/12 text-white`
             : item.href
@@ -112,7 +112,7 @@ export function Rail({ userName }: { userName: string }) {
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 rounded-full bg-brand-soft" />
               ) : null}
               {item.icon}
-              <span>{item.label}</span>
+              <span className="max-lg:hidden">{item.label}</span>
             </>
           );
 
@@ -132,7 +132,7 @@ export function Rail({ userName }: { userName: string }) {
         })}
       </nav>
 
-      <div className="mt-auto mb-4 flex flex-col items-center gap-3">
+      <div className="mt-auto mb-4 flex flex-col items-center gap-3 max-lg:mt-0 max-lg:mb-0 max-lg:ml-auto max-lg:flex-row max-lg:gap-1.5">
         <ThemeToggle />
         <form action={logout}>
           <button

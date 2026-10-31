@@ -87,6 +87,7 @@ export default async function PatientDetailPage({
   const detail: PatientDetail = {
     id: patient.id,
     name: patient.name,
+    cardNo: patient.cardNo,
     gender: patient.gender,
     birthYear: patient.birthYear,
     phone: patient.phone,
