@@ -22,3 +22,5 @@ data/import-tmp/
 tmp-uploads/
 data/backups/
 tmp/
+
+dist/
