@@ -116,6 +116,11 @@ cpSync(path.join(root, "prisma", "migrations"), path.join(out, "prisma", "migrat
 for (const dir of ["data", "data/uploads", "data/backups", "data/logs"]) {
   mkdirSync(path.join(out, dir), { recursive: true });
 }
+// 把本机已上传的图片一起带走（备份不带走，体积太大）
+const uploadsFrom = path.join(root, "data", "uploads");
+if (existsSync(uploadsFrom)) {
+  cpSync(uploadsFrom, path.join(out, "data", "uploads"), { recursive: true, force: true });
+}
 
 const packaging = path.join(root, "packaging");
 for (const file of readdirSync(packaging)) {
