@@ -150,6 +150,18 @@ export function KbSearchOverlay() {
   const current = result.tabs[tab] ?? { hits: [], matched: 0 };
   const hits = current.hits;
 
+  // 新一次检索结果里，当前页签没命中、别的页签有命中时自动切过去（避免"方剂 0 条"挡住真正的命中）
+  const autoTabRef = useRef("");
+  useEffect(() => {
+    if (!result.query || result.query === autoTabRef.current) return;
+    autoTabRef.current = result.query;
+    if ((result.tabs[tab]?.hits.length ?? 0) > 0) return;
+    const next = ["formula", "herb", "case", "classic"].find(
+      (key) => (result.tabs[key]?.hits.length ?? 0) > 0,
+    );
+    if (next) setTab(next);
+  }, [result, tab]);
+
   // 古籍展开：拉取正文（章节标题 + 该章前 200 字）
   const [book, setBook] = useState<ClassicBook | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
