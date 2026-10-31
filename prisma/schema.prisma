@@ -38,6 +38,7 @@ model Patient {
   updatedAt    String  @map("updated_at")
 
   visits Visit[]
+  attachments Attachment[]
 
   @@map("patients")
 }
@@ -53,6 +54,7 @@ model Visit {
 
   patient  Patient         @relation(fields: [patientId], references: [id])
   revisions VisitRevision[]
+  attachments Attachment[]
 
   @@unique([patientId, visitNo])
   @@map("visits")
@@ -260,4 +262,43 @@ model Setting {
   updatedAt String @map("updated_at")
 
   @@map("settings")
+}
+
+// 接诊词库：舌象 / 脉象 / 证型（含建议治法）/ 治法。
+// 医生在接诊台或设置页新增的条目全站共享，删除也全站生效。
+model ConsultTerm {
+  id        String  @id @default(uuid())
+  category  String // tongue | pulse | syndrome | treatment
+  term      String
+  hint      String? // syndrome 的建议治法；treatment 可为空
+  useCount  Int     @default(0) @map("use_count")
+  sortNo    Int     @default(0) @map("sort_no")
+  builtin   Int     @default(0) // 1 = 随程序内置，仍可删除
+  createdAt String  @map("created_at")
+
+  @@unique([category, term])
+  @@index([category, useCount])
+  @@map("consult_terms")
+}
+
+// 图片资料：舌象照片、检查报告、病历附件；患者级，可挂到某次就诊。
+model Attachment {
+  id         String  @id @default(uuid())
+  patientId  String  @map("patient_id")
+  visitId    String? @map("visit_id")
+  kind       String  @default("tongue") // tongue（舌象） | record（检查报告/病历） | other
+  fileName   String  @map("file_name")
+  mimeType   String  @map("mime_type")
+  byteSize   Int     @map("byte_size")
+  storedPath String  @map("stored_path")
+  note       String?
+  operatorId String? @map("operator_id")
+  createdAt  String  @map("created_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  visit   Visit?  @relation(fields: [visitId], references: [id])
+
+  @@index([patientId, createdAt])
+  @@index([visitId])
+  @@map("attachments")
 }

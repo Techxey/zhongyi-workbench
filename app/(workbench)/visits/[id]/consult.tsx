@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AttachmentGallery } from "@/components/attachment-gallery";
+import { TermChips } from "@/components/term-chips";
 import { TopBar } from "@/components/topbar";
 import { ageOf, formatDate, genderLabel } from "@/lib/format";
+import type { AttachmentItem } from "@/lib/attachments";
 import {
   DEFAULT_USAGE,
-  PULSE_OPTIONS,
-  TONGUE_OPTIONS,
-  TREATMENT_HINTS,
   diffPrescription,
   findIncompatibilities,
   formatDose,
@@ -16,14 +16,18 @@ import {
   isNumericDose,
   newHerb,
   parseDose,
-  pickSyndromeCandidates,
   validateDraft,
   type HerbDraft,
   type IncompatPair,
   type RxLine,
-  type SyndromeAlias,
   type VisitDraft,
 } from "@/lib/visit";
+import {
+  pickSyndromeCandidates,
+  type VocabCategory,
+  type VocabItem,
+} from "@/lib/vocabulary";
+import { bumpConsultTerms } from "@/lib/vocabulary-actions";
 import { saveAsTemplate, saveVisit } from "./actions";
 
 export type KbFormula = {
@@ -76,8 +80,12 @@ export type ConsultationData = {
   isAmend: boolean;
   previous: PreviousRecord | null;
   symptomTerms: { term: string; count: number }[];
-  syndromeAliases: SyndromeAlias[];
+  syndromeAliases: { label: string; term: string; normTerm: string; weight: number }[];
   incompatPairs: IncompatPair[];
+  /** 舌象 / 脉象 / 证型 / 治法 词库（来自 consult_terms 表，医生可增删，全站共享） */
+  vocabulary: Record<VocabCategory, VocabItem[]>;
+  /** 该患者的图片资料（舌象照片、检查报告、病历照片） */
+  attachments: AttachmentItem[];
   kbFormula: KbFormula | null;
 };
 
@@ -120,10 +128,34 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
     () =>
       pickSyndromeCandidates(
         [draft.chiefComplaint, draft.presentIllness, draft.symptoms.join("")].join(""),
-        data.syndromeAliases,
+        data.vocabulary.syndrome,
+        data.syndromeAliases.map((alias) => ({ term: alias.term, normTerm: alias.normTerm })),
         6,
       ),
-    [draft.chiefComplaint, draft.presentIllness, draft.symptoms, data.syndromeAliases],
+    [
+      draft.chiefComplaint,
+      draft.presentIllness,
+      draft.symptoms,
+      data.vocabulary.syndrome,
+      data.syndromeAliases,
+    ],
+  );
+
+  // 证型 chips：候选在前，其余词库证型排后面，合并去重
+  const syndromeChipItems = useMemo(() => {
+    const seen = new Set<string>();
+    const merged: VocabItem[] = [];
+    for (const item of [...syndromeCandidates, ...data.vocabulary.syndrome]) {
+      if (seen.has(item.term)) continue;
+      seen.add(item.term);
+      merged.push(item);
+    }
+    return merged;
+  }, [syndromeCandidates, data.vocabulary.syndrome]);
+
+  const tonguePhotos = useMemo(
+    () => data.attachments.filter((item) => item.kind === "tongue"),
+    [data.attachments],
   );
 
   const rxLines = useMemo(() => herbLines(draft.prescription.items), [draft.prescription.items]);
@@ -186,6 +218,33 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
   const toggleArray = (key: "symptoms" | "tongue" | "pulse", value: string) => {
     const list = draft[key];
     patch(key, list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
+  };
+
+  // 选中词条时顺手累加使用频次，下次它会更靠前（不阻塞界面）
+  const bump = (category: VocabCategory, term: string) => {
+    void bumpConsultTerms(category, [term]).catch(() => {});
+  };
+
+  const toggleTonguePulse = (key: "tongue" | "pulse") => (term: string) => {
+    const wasSelected = draft[key].includes(term);
+    toggleArray(key, term);
+    if (!wasSelected) bump(key, term);
+  };
+
+  const toggleSyndrome = (term: string, item: VocabItem | null) => {
+    const selected = draft.syndrome === term;
+    patch("syndrome", selected ? "" : term);
+    if (!selected) {
+      bump("syndrome", term);
+      const hint = item?.hint ?? "";
+      if (hint && !draft.treatment.trim()) patch("treatment", hint);
+    }
+  };
+
+  const toggleTreatment = (term: string) => {
+    const selected = draft.treatment === term;
+    patch("treatment", selected ? "" : term);
+    if (!selected) bump("treatment", term);
   };
 
   const handleSave = async (print: boolean) => {
@@ -556,60 +615,54 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
           <section className="card p-4 space-y-3">
             <div className="flex items-start gap-3">
               <span className="font-serif text-[16px] text-ink shrink-0 pt-0.5">舌</span>
-              <ChipRow
-                options={TONGUE_OPTIONS}
+              <TermChips
+                category="tongue"
+                items={data.vocabulary.tongue}
                 selected={draft.tongue}
-                onToggle={(value) => toggleArray("tongue", value)}
+                onToggle={toggleTonguePulse("tongue")}
                 ariaLabel="舌象"
               />
             </div>
             <div className="h-px bg-line-2" />
             <div className="flex items-start gap-3">
               <span className="font-serif text-[16px] text-ink shrink-0 pt-0.5">脉</span>
-              <ChipRow
-                options={PULSE_OPTIONS}
+              <TermChips
+                category="pulse"
+                items={data.vocabulary.pulse}
                 selected={draft.pulse}
-                onToggle={(value) => toggleArray("pulse", value)}
+                onToggle={toggleTonguePulse("pulse")}
                 ariaLabel="脉象"
               />
             </div>
+            <div className="h-px bg-line-2" />
+            <AttachmentGallery
+              patientId={data.patient.id}
+              visitId={data.visitId}
+              items={tonguePhotos}
+              defaultKind="tongue"
+              compact
+              title="舌象照片"
+            />
           </section>
 
           {/* 5 辨证与治法 */}
           <section className="card p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="field-label !mb-0">辨证与治法</span>
-              <span className="text-[11px] text-ink-4">候选来自知识库别名联想</span>
+              <span className="text-[11px] text-ink-4">
+                候选按主诉关键词排前 · 「＋ 自定义」加的证型全站可用
+              </span>
             </div>
-            <div role="group" aria-label="证型候选" data-kb-stop tabIndex={0} className="rounded-[6px]">
-              <div className="flex flex-wrap gap-2 mb-2.5">
-                {syndromeCandidates.map((syndrome) => {
-                  const selected = draft.syndrome === syndrome;
-                  return (
-                    <button
-                      key={syndrome}
-                      type="button"
-                      tabIndex={-1}
-                      aria-pressed={selected}
-                      onClick={() => {
-                        patch("syndrome", selected ? "" : syndrome);
-                        const hint = TREATMENT_HINTS[syndrome];
-                        if (!selected && hint && !draft.treatment.trim()) {
-                          patch("treatment", hint);
-                        }
-                      }}
-                      className={selected ? "chip chip-lg chip-brand" : "chip chip-lg hover:border-line-strong"}
-                    >
-                      {syndrome}
-                    </button>
-                  );
-                })}
-                {syndromeCandidates.length === 0 ? (
-                  <span className="text-[12.5px] text-ink-4">知识库里还没有证型别名，可手填</span>
-                ) : null}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+            <TermChips
+              category="syndrome"
+              items={syndromeChipItems}
+              mode="single"
+              selected={draft.syndrome ? [draft.syndrome] : []}
+              onToggle={toggleSyndrome}
+              ariaLabel="证型候选"
+              visibleCount={12}
+            />
+            <div className="grid grid-cols-2 gap-3 mt-2.5">
               <div>
                 <label className="field-label" htmlFor="syndrome">
                   证型
@@ -637,15 +690,18 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
                 />
               </div>
             </div>
-            {TREATMENT_HINTS[draft.syndrome] && !draft.treatment.trim() ? (
-              <button
-                type="button"
-                className="mt-2 text-[11.5px] text-brand hover:underline"
-                onClick={() => patch("treatment", TREATMENT_HINTS[draft.syndrome])}
-              >
-                建议治法：{TREATMENT_HINTS[draft.syndrome]}（点击填入）
-              </button>
-            ) : null}
+            <div className="mt-3 flex items-start gap-3">
+              <span className="shrink-0 pt-0.5 text-[11px] text-ink-4 w-[26px]">常用</span>
+              <TermChips
+                category="treatment"
+                items={data.vocabulary.treatment}
+                mode="single"
+                selected={draft.treatment ? [draft.treatment] : []}
+                onToggle={toggleTreatment}
+                ariaLabel="常用治法"
+                visibleCount={10}
+              />
+            </div>
           </section>
 
           {/* 6 医嘱与复诊 */}
@@ -993,60 +1049,6 @@ export function VisitScreen({ data }: { data: ConsultationData }) {
           <p className="text-[12.5px] text-ink">{toast}</p>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function ChipRow({
-  options,
-  selected,
-  onToggle,
-  ariaLabel,
-}: {
-  options: string[];
-  selected: string[];
-  onToggle: (value: string) => void;
-  ariaLabel: string;
-}) {
-  const [active, setActive] = useState(0);
-  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
-
-  return (
-    <div
-      role="group"
-      aria-label={ariaLabel}
-      data-kb-stop
-      tabIndex={0}
-      className="flex-1 rounded-[6px]"
-      onKeyDown={(event) => {
-        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-        event.preventDefault();
-        const direction = event.key === "ArrowRight" ? 1 : -1;
-        const next = (active + direction + options.length) % options.length;
-        setActive(next);
-        buttons.current[next]?.focus();
-      }}
-    >
-      <div className="flex flex-wrap gap-2">
-        {options.map((option, index) => {
-          const isSelected = selected.includes(option);
-          return (
-            <button
-              key={option}
-              type="button"
-              tabIndex={-1}
-              ref={(element) => {
-                buttons.current[index] = element;
-              }}
-              aria-pressed={isSelected}
-              onClick={() => onToggle(option)}
-              className={isSelected ? "chip chip-lg chip-brand" : "chip chip-lg hover:border-line-strong"}
-            >
-              {option}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }

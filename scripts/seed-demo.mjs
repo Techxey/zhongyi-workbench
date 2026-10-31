@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { rm } from "node:fs/promises";
 
 const prisma = new PrismaClient();
 const now = new Date();
@@ -18,9 +19,11 @@ const prescriptionIds = (
 ).map((row) => row.id);
 await prisma.prescriptionItem.deleteMany({ where: { prescriptionId: { in: prescriptionIds } } });
 await prisma.prescription.deleteMany({ where: { id: { in: prescriptionIds } } });
+await prisma.attachment.deleteMany({});
 await prisma.visitRevision.deleteMany({ where: { visitId: { in: visitIds } } });
 await prisma.visit.deleteMany({ where: { id: { in: visitIds } } });
 await prisma.patient.deleteMany({});
+await rm("./data/uploads", { recursive: true, force: true });
 
 const doctor = await prisma.user.findFirstOrThrow({ where: { username: "doctor" } });
 

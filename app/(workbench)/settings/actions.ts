@@ -38,3 +38,47 @@ export async function saveSettings(
   revalidatePath("/settings");
   return { ok: true };
 }
+
+const CLINIC_FIELDS = [
+  { key: "clinic_name", label: "诊所名称", max: 40 },
+  { key: "clinic_doctor", label: "医生署名", max: 20 },
+  { key: "default_usage", label: "默认用法", max: 60 },
+] as const;
+
+/** 诊所信息：诊所名（打印页抬头）、医生署名、处方默认用法 */
+export async function saveClinic(
+  _prev: SettingsState,
+  formData: FormData,
+): Promise<SettingsState> {
+  const user = await requireUser();
+
+  const values: Record<string, string> = {};
+  for (const field of CLINIC_FIELDS) {
+    const value = String(formData.get(field.key) ?? "").trim();
+    if (value.length > field.max) return { error: `${field.label}最多 ${field.max} 个字` };
+    values[field.key] = value;
+  }
+  if (!values.clinic_name) return { error: "诊所名称不能为空" };
+
+  for (const field of CLINIC_FIELDS) {
+    const before = await prisma.setting.findUnique({ where: { key: field.key } });
+    await prisma.setting.upsert({
+      where: { key: field.key },
+      create: { key: field.key, value: values[field.key], updatedAt: new Date().toISOString() },
+      update: { value: values[field.key], updatedAt: new Date().toISOString() },
+    });
+    await writeAudit({
+      entityType: "export",
+      entityId: `settings:${field.key}`,
+      action: "update",
+      before: before ? { value: before.value } : undefined,
+      after: { value: values[field.key] },
+      operatorId: user.id,
+    });
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/visits", "layout");
+  revalidatePath("/print", "layout");
+  return { ok: true };
+}

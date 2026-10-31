@@ -2,6 +2,9 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { emptyDraft, parseDose, type RxLine, type VisitDraft } from "@/lib/visit";
+import { groupVocab } from "@/lib/vocabulary";
+import { loadVocabItems } from "@/lib/vocabulary-server";
+import type { AttachmentItem } from "@/lib/attachments";
 import { VisitScreen, type ConsultationData } from "./consult";
 
 export const dynamic = "force-dynamic";
@@ -79,15 +82,24 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     null;
   const previousRx = await loadPrescription(previousRevision?.id);
 
-  const [symptomTerms, syndromeAliases, incompatPairs, clinicSetting] = await Promise.all([
-    prisma.symptomTerm.findMany({ orderBy: [{ useCount: "desc" }, { term: "asc" }], take: 12 }),
-    prisma.kbAlias.findMany({
-      where: { aliasType: "syndrome" },
-      include: { item: { select: { name: true } } },
-    }),
-    prisma.herbIncompatibility.findMany(),
-    prisma.setting.findUnique({ where: { key: "clinic_name" } }),
-  ]);
+  const [symptomTerms, syndromeAliases, incompatPairs, clinicSetting, clinicDoctor, defaultUsage, vocabItems, attachmentRows] =
+    await Promise.all([
+      prisma.symptomTerm.findMany({ orderBy: [{ useCount: "desc" }, { term: "asc" }], take: 12 }),
+      prisma.kbAlias.findMany({
+        where: { aliasType: "syndrome" },
+        include: { item: { select: { name: true } } },
+      }),
+      prisma.herbIncompatibility.findMany(),
+      prisma.setting.findUnique({ where: { key: "clinic_name" } }),
+      prisma.setting.findUnique({ where: { key: "clinic_doctor" } }),
+      prisma.setting.findUnique({ where: { key: "default_usage" } }),
+      loadVocabItems(),
+      prisma.attachment.findMany({
+        where: { patientId: visit.patientId },
+        orderBy: { createdAt: "desc" },
+        take: 60,
+      }),
+    ]);
 
   // 处方来源对应的知识库方剂：优先用快照里记的 kbItemId，
   // 医生手填方名时按方名回查一次，让右栏方解/出处也能显示。
@@ -121,6 +133,11 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     currentRx?.kbItemId ?? null,
     currentRx?.formulaName ?? null,
   );
+
+  const blankRx = emptyDraft().prescription;
+  const usageWithDefault = defaultUsage?.value?.trim()
+    ? { ...blankRx, usageText: defaultUsage.value }
+    : blankRx;
 
   const draft: VisitDraft = currentRevision
     ? {
@@ -159,9 +176,9 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 };
               }),
             }
-          : emptyDraft().prescription,
+          : usageWithDefault,
       }
-    : emptyDraft();
+    : { ...emptyDraft(), prescription: usageWithDefault };
 
   const data: ConsultationData = {
     visitId: visit.id,
@@ -178,7 +195,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     visitAt: visit.visitAt,
     status: visit.status,
     revisionNo: visit.revisions.length,
-    doctorName: user.name,
+    doctorName: clinicDoctor?.value || user.name,
     clinicName: clinicSetting?.value || "中医诊所",
     draft,
     isAmend: visit.revisions.length > 0,
@@ -215,6 +232,20 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
       herbB: pair.herbB,
       rule: pair.rule,
     })),
+    vocabulary: groupVocab(vocabItems),
+    attachments: attachmentRows.map(
+      (row): AttachmentItem => ({
+        id: row.id,
+        patientId: row.patientId,
+        visitId: row.visitId,
+        kind: row.kind as AttachmentItem["kind"],
+        fileName: row.fileName,
+        mimeType: row.mimeType,
+        byteSize: row.byteSize,
+        note: row.note,
+        createdAt: row.createdAt,
+      }),
+    ),
     kbFormula,
   };
 

@@ -106,6 +106,69 @@ async function main() {
     }
   }
 
+  // 5.1 接诊词库：舌象 / 脉象 / 证型（含建议治法）/ 常用治法。
+  // 这些条目医生在接诊台或设置页都能新增、删除，改动全站共享。
+  const TONGUE_TERMS = [
+    "舌淡红", "舌淡白", "舌红", "舌绛", "舌紫暗", "舌胖大",
+    "舌边齿痕", "苔薄白", "苔白腻", "苔黄腻", "苔少", "苔剥落",
+  ];
+  const PULSE_TERMS = [
+    "脉浮", "脉沉", "脉迟", "脉数", "脉弦", "脉滑",
+    "脉细", "脉濡", "脉涩", "脉虚", "脉紧", "脉结代",
+  ];
+  const SYNDROME_HINTS = {
+    心脾两虚: "益气补血，健脾养心",
+    肝郁脾虚: "疏肝健脾",
+    肝肾阴虚: "滋补肝肾",
+    脾虚湿盛: "健脾祛湿",
+    气血两虚: "益气补血",
+    痰湿内阻: "燥湿化痰，理气和中",
+    肝阳上亢: "平肝潜阳",
+    风寒束表: "辛温解表",
+    风热犯肺: "辛凉解表，宣肺止咳",
+    脾胃虚寒: "温中健脾",
+    肾阳不足: "温补肾阳",
+    瘀血阻滞: "活血化瘀",
+    肝胃不和: "疏肝和胃",
+    阴虚火旺: "滋阴降火",
+  };
+  const TREATMENT_TERMS = [
+    ...new Set(Object.values(SYNDROME_HINTS)),
+    "清热解毒",
+    "养血安神",
+    "理气止痛",
+    "利水渗湿",
+  ];
+
+  const consultTerms = [
+    ...TONGUE_TERMS.map((term, index) => ({ category: "tongue", term, hint: null, sortNo: index })),
+    ...PULSE_TERMS.map((term, index) => ({ category: "pulse", term, hint: null, sortNo: index })),
+    ...Object.entries(SYNDROME_HINTS).map(([term, hint], index) => ({
+      category: "syndrome",
+      term,
+      hint,
+      sortNo: index,
+    })),
+    ...TREATMENT_TERMS.map((term, index) => ({ category: "treatment", term, hint: null, sortNo: index })),
+  ];
+
+  for (const entry of consultTerms) {
+    const seedCount = 100 - entry.sortNo;
+    await prisma.consultTerm.upsert({
+      where: { category_term: { category: entry.category, term: entry.term } },
+      update: { hint: entry.hint, sortNo: entry.sortNo, builtin: 1 },
+      create: {
+        category: entry.category,
+        term: entry.term,
+        hint: entry.hint,
+        sortNo: entry.sortNo,
+        useCount: seedCount,
+        builtin: 1,
+        createdAt: now(),
+      },
+    });
+  }
+
   // 6. starter 方剂：全部为公版古籍方，只放常见组成与功效，供 R2 方解摘录与 R3 检索先用
   const STARTER_FORMULAS = [
     {

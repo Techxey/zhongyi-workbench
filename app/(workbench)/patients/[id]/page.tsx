@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { AttachmentGallery } from "@/components/attachment-gallery";
 import { TopBar } from "@/components/topbar";
 import { ageOf, formatDate, genderLabel, truncate } from "@/lib/format";
+import type { AttachmentItem } from "@/lib/attachments";
 import { PatientInfoCard, type PatientDetail } from "./patient-info-card";
 import { startVisit } from "../actions";
 
@@ -64,6 +66,23 @@ export default async function PatientDetailPage({
   });
 
   const draftVisit = patient.visits.find((visit) => visit.status === "draft") ?? null;
+
+  const attachmentRows = await prisma.attachment.findMany({
+    where: { patientId: patient.id },
+    orderBy: { createdAt: "desc" },
+    take: 120,
+  });
+  const attachments: AttachmentItem[] = attachmentRows.map((row) => ({
+    id: row.id,
+    patientId: row.patientId,
+    visitId: row.visitId,
+    kind: row.kind as AttachmentItem["kind"],
+    fileName: row.fileName,
+    mimeType: row.mimeType,
+    byteSize: row.byteSize,
+    note: row.note,
+    createdAt: row.createdAt,
+  }));
 
   const detail: PatientDetail = {
     id: patient.id,
@@ -170,6 +189,14 @@ export default async function PatientDetailPage({
                 </ul>
               )}
             </section>
+
+            <AttachmentGallery
+              patientId={patient.id}
+              items={attachments}
+              defaultKind="record"
+              title="图片资料"
+              hint="舌象照片、检查报告、外院病历照片都可以存在这里；接诊时拍的舌象也会出现在这次就诊里。"
+            />
           </div>
 
           <aside className="space-y-4">

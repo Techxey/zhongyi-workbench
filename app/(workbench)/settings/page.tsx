@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getThemeChoice } from "@/lib/theme-server";
 import { TopBar } from "@/components/topbar";
 import { ThemeSegmented } from "@/components/theme-toggle";
+import { DEFAULT_USAGE } from "@/lib/visit";
+import { VOCAB_CATEGORIES, VOCAB_LABELS } from "@/lib/vocabulary";
+import { ClinicForm } from "./clinic-form";
 import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
@@ -16,16 +20,27 @@ export default async function SettingsPage() {
   const user = await requireUser();
   const theme = await getThemeChoice();
 
-  const [retention, patientCount, kbCount, visitCount] = await Promise.all([
-    prisma.setting.findUnique({ where: { key: "backup_retention_days" } }),
-    prisma.patient.count(),
-    prisma.kbItem.count(),
-    prisma.visit.count(),
-  ]);
+  const [retention, clinicName, clinicDoctor, defaultUsage, patientCount, kbCount, visitCount, vocabCounts] =
+    await Promise.all([
+      prisma.setting.findUnique({ where: { key: "backup_retention_days" } }),
+      prisma.setting.findUnique({ where: { key: "clinic_name" } }),
+      prisma.setting.findUnique({ where: { key: "clinic_doctor" } }),
+      prisma.setting.findUnique({ where: { key: "default_usage" } }),
+      prisma.patient.count(),
+      prisma.kbItem.count(),
+      prisma.visit.count(),
+      prisma.consultTerm.groupBy({ by: ["category"], _count: { _all: true } }),
+    ]);
+
+  const vocabSummary = VOCAB_CATEGORIES.map((category) => ({
+    category,
+    label: VOCAB_LABELS[category],
+    count: vocabCounts.find((row) => row.category === category)?._count._all ?? 0,
+  }));
 
   return (
     <>
-      <TopBar title="设置" subtitle="账号、数据与备份" />
+      <TopBar title="设置" subtitle="账号、诊所、词库与备份" />
       <div className="px-[26px] py-6 max-w-[820px] space-y-5">
         <section className="card">
           <div className="px-5 h-[50px] flex items-center border-b border-line-2">
@@ -47,6 +62,36 @@ export default async function SettingsPage() {
               </dd>
             </div>
           </dl>
+        </section>
+
+        <ClinicForm
+          clinicName={clinicName?.value ?? "杏林堂中医诊所"}
+          doctorName={clinicDoctor?.value ?? user.name}
+          defaultUsage={defaultUsage?.value ?? DEFAULT_USAGE}
+        />
+
+        <section className="card">
+          <div className="px-5 h-[50px] flex items-center border-b border-line-2">
+            <h2 className="section-title">接诊词库</h2>
+            <span className="ml-2 text-[11.5px] text-ink-4">舌象 / 脉象 / 证型 / 治法，自己加自己删</span>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <dl className="grid grid-cols-4 gap-4">
+              {vocabSummary.map((row) => (
+                <div key={row.category}>
+                  <dt className="text-[11.5px] text-ink-4 mb-0.5">{row.label}</dt>
+                  <dd className="text-[15px] text-ink num">{row.count} 条</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="text-[12.5px] text-ink-3 leading-relaxed">
+              词库集中管理：新增的舌象/脉象/证型/治法保存后，任何患者的接诊台都能直接点选；删除也全站生效。
+              证型可附带默认治法，点证型时自动带出。
+            </p>
+            <Link href="/settings/vocabulary" className="btn btn-primary inline-flex">
+              打开词库管理
+            </Link>
+          </div>
         </section>
 
         <section className="card">

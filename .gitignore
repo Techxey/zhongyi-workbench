@@ -11,6 +11,8 @@ prisma/dev.db-journal
 prisma/dev.db-wal
 prisma/dev.db-shm
 backups
+data/uploads
+tmp-uploads
 data/kb.db*
 tsconfig.tsbuildinfo
 next-env.d.ts

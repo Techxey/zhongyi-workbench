@@ -46,10 +46,12 @@ export default async function PrescriptionPrintPage({
 
   const clinic = await prisma.setting.findUnique({ where: { key: "clinic_name" } });
   const clinicName = clinic?.value?.trim() || "中医诊所";
+  const clinicDoctor = await prisma.setting.findUnique({ where: { key: "clinic_doctor" } });
   const doctor = await prisma.user.findUnique({
     where: { id: revision.operatorId },
     select: { displayName: true },
   });
+  const doctorName = clinicDoctor?.value?.trim() || doctor?.displayName || "";
 
   const symptoms = parseList(revision.symptomsJson);
   const tongue = parseList(revision.tongueJson);
@@ -136,7 +138,7 @@ export default async function PrescriptionPrintPage({
         </div>
 
         <div className="sign">
-          <span>医师：{doctor?.displayName ?? ""}</span>
+          <span>医师：{doctorName}</span>
           <span>签名：________________</span>
           <span>日期：{formatDate(visit.visitAt)}</span>
         </div>
