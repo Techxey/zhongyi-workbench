@@ -89,28 +89,38 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     prisma.setting.findUnique({ where: { key: "clinic_name" } }),
   ]);
 
-  let kbFormula: ConsultationData["kbFormula"] = null;
-  if (currentRx?.kbItemId) {
-    const item = await prisma.kbItem.findUnique({
-      where: { id: currentRx.kbItemId },
-      include: { versions: { orderBy: { version: "desc" }, take: 1 } },
-    });
+  // 处方来源对应的知识库方剂：优先用快照里记的 kbItemId，
+  // 医生手填方名时按方名回查一次，让右栏方解/出处也能显示。
+  async function resolveKbFormula(itemId: string | null, formulaName: string | null) {
+    const include = { versions: { orderBy: { version: "desc" as const }, take: 1 } };
+    const item = itemId
+      ? await prisma.kbItem.findUnique({ where: { id: itemId }, include })
+      : formulaName
+        ? await prisma.kbItem.findFirst({
+            where: { type: "formula", name: formulaName },
+            include,
+          })
+        : null;
     const version = item?.versions[0];
-    if (item && version) {
-      const composition = safeParseComposition(version.compositionJson);
-      kbFormula = {
-        id: item.id,
-        name: item.name,
-        source: item.source,
-        efficacy: version.efficacy,
-        indication: version.indication,
-        commentary: version.commentary,
-        usageText: version.usageText,
-        items: composition,
-        version: version.version,
-      };
-    }
+    if (!item || !version) return null;
+    const formula: NonNullable<ConsultationData["kbFormula"]> = {
+      id: item.id,
+      name: item.name,
+      source: item.source,
+      efficacy: version.efficacy,
+      indication: version.indication,
+      commentary: version.commentary,
+      usageText: version.usageText,
+      items: safeParseComposition(version.compositionJson),
+      version: version.version,
+    };
+    return formula;
   }
+
+  const kbFormula: ConsultationData["kbFormula"] = await resolveKbFormula(
+    currentRx?.kbItemId ?? null,
+    currentRx?.formulaName ?? null,
+  );
 
   const draft: VisitDraft = currentRevision
     ? {
