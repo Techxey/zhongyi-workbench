@@ -3,7 +3,7 @@ import { verifySessionTokenEdge } from "@/lib/session-edge";
 
 const SESSION_COOKIE = "zyb_session";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/api/health"];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;

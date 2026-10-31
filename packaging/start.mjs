@@ -1,5 +1,5 @@
 // 中医工作台 · 本机版启动器
-// 作用：启动内置的 Next.js 服务（只监听 127.0.0.1），等页面能访问后自动打开应用窗口。
+// 作用：启动内置的 Next.js 服务（只监听 127.0.0.1），确认数据库能读之后再打开应用窗口。
 // 启动器会常驻在后台（不显示窗口），负责看住服务进程；关掉工作台请双击「停止工作台」。
 // 所有数据都在本目录下，不联网、不需要安装 Node。
 import { spawn } from "node:child_process";
@@ -31,13 +31,33 @@ function readSecret() {
   return value;
 }
 
-async function isUp() {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// 只探活 HTTP（页面能打开不代表数据库能读）
+async function httpUp(timeout = 1500) {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1500);
+    const timer = setTimeout(() => controller.abort(), timeout);
     const res = await fetch(`${url}/login`, { signal: controller.signal });
     clearTimeout(timer);
     return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// 数据库就绪探测：首次启动时大库文件可能还在被系统占用，这里多试几次
+async function dbReady(timeout = 2500) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    const res = await fetch(`${url}/api/health`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data?.db === true;
   } catch {
     return false;
   }
@@ -58,7 +78,9 @@ function openWindow() {
   spawn("cmd", ["/c", "start", "", url], options).unref();
 }
 
-if (await isUp()) {
+if (await httpUp()) {
+  // 已经有一个在跑：确保数据库也能读，然后直接开窗口
+  for (let i = 0; i < 20 && !(await dbReady()); i += 1) await sleep(400);
   console.log(`工作台已经在运行：${url}`);
   openWindow();
   process.exit(0);
@@ -91,15 +113,18 @@ const child = spawn(process.execPath, [path.join(root, "server.js")], {
 // 记的是启动器自己的 PID：停止时按进程树一起结束，不会漏掉服务
 writeFileSync(pidFile, String(process.pid), "utf8");
 
-const deadline = Date.now() + 60_000;
+const deadline = Date.now() + 90_000;
+let httpReady = false;
 let ready = false;
 while (Date.now() < deadline) {
-  if (await isUp()) {
+  if (!httpReady && (await httpUp())) httpReady = true;
+  // 页面起来了还不算好：等数据库也能读，再开窗口，避免用户第一次点进系统就吃到错误页
+  if (httpReady && (await dbReady())) {
     ready = true;
     break;
   }
   if (child.exitCode !== null) break;
-  await new Promise((resolve) => setTimeout(resolve, 400));
+  await sleep(400);
 }
 
 if (!ready) {
