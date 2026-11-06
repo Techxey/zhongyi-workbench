@@ -2,15 +2,17 @@
 
 # 在「登录 Windows 后自动在后台启动工作台」和「取消」之间切换。
 # 由「设置开机自启.bat」/「取消开机自启.bat」调用。
+# 优先让「工作台托盘.exe」常驻（托盘点一下就能开窗口），没有托盘再退回 中医工作台.exe --background。
 
 $ErrorActionPreference = "Stop"
 
 $base = Split-Path -Parent $PSScriptRoot
 $startup = [Environment]::GetFolderPath("Startup")
 $vbsPath = Join-Path $startup "中医工作台-后台启动.vbs"
+$tray = Join-Path $base "工作台托盘.exe"
 $exe = Join-Path $base "中医工作台.exe"
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-$runName = "ZhongyiWorkbench"
+$runNames = @("ZhongyiWorkbenchTray", "ZhongyiWorkbench")
 
 function Pause2 {
   if ($env:ZYB_SILENT -eq "1") { return }
@@ -20,15 +22,28 @@ function Pause2 {
 }
 
 if ($Remove) {
-  Remove-ItemProperty -Path $runKey -Name $runName -ErrorAction SilentlyContinue
+  foreach ($name in $runNames) {
+    Remove-ItemProperty -Path $runKey -Name $name -ErrorAction SilentlyContinue
+  }
   if (Test-Path -LiteralPath $vbsPath) { Remove-Item -LiteralPath $vbsPath -Force }
   Write-Host "已取消开机自启。下次登录 Windows 不会自动在后台启动。"
   Pause2
   exit 0
 }
 
-if (-not (Test-Path -LiteralPath $exe)) {
-  Write-Host "没找到「中医工作台.exe」，请把 tools 文件夹留在工作台目录里。"
+$useTray = Test-Path -LiteralPath $tray
+if ($useTray) {
+  $runName = "ZhongyiWorkbenchTray"
+  $target = $tray
+  $argLine = " --autostart"
+} else {
+  $runName = "ZhongyiWorkbench"
+  $target = $exe
+  $argLine = " --background"
+}
+
+if (-not (Test-Path -LiteralPath $target)) {
+  Write-Host "没找到「中医工作台.exe」/「工作台托盘.exe」，请把 tools 文件夹留在工作台目录里。"
   Pause2
   exit 1
 }
@@ -36,13 +51,17 @@ if (-not (Test-Path -LiteralPath $exe)) {
 $ok = $false
 $how = ""
 
+foreach ($name in $runNames) {
+  if ($name -ne $runName) { Remove-ItemProperty -Path $runKey -Name $name -ErrorAction SilentlyContinue }
+}
+
 try {
-  New-ItemProperty -Path $runKey -Name $runName -Value ('"' + $exe + '" --background') -PropertyType String -Force | Out-Null
+  New-ItemProperty -Path $runKey -Name $runName -Value ('"' + $target + '"' + $argLine) -PropertyType String -Force | Out-Null
   $check = (Get-ItemProperty -Path $runKey -Name $runName -ErrorAction Stop).$runName
   if ($check) { $ok = $true; $how = "注册表" }
 } catch {
   try {
-    $lineRun = 'sh.Run q & "' + $exe + '" & q & " --background", 0, False'
+    $lineRun = 'sh.Run q & "' + $target + '" & q & "' + $argLine + '", 0, False'
     $lines = @(
       "' 由「设置开机自启.bat」生成：登录后在后台把工作台服务准备好，不弹窗口。",
       'Set sh = CreateObject("WScript.Shell")',
@@ -60,7 +79,11 @@ try {
 
 if ($ok) {
   Write-Host "已设置开机自启（$how）。"
-  Write-Host "登录 Windows 后工作台会在后台准备好，点桌面图标即可秒开（约 0.3 秒起窗口）。"
+  if ($useTray) {
+    Write-Host "登录 Windows 后，工作台会在托盘里待命：点托盘图标就能打开窗口，不用等。"
+  } else {
+    Write-Host "登录 Windows 后工作台会在后台准备好，点桌面图标即可秒开（约 0.3 秒起窗口）。"
+  }
   Write-Host ""
   Write-Host "想取消：双击「取消开机自启.bat」。"
 } else {

@@ -21,11 +21,18 @@ if (!csc) {
 
 mkdirSync(outDir, { recursive: true });
 
+const frameworkDir = path.dirname(csc);
+const refsWinForms = [
+  path.join(frameworkDir, "System.Windows.Forms.dll"),
+  path.join(frameworkDir, "System.Drawing.dll"),
+];
+
 const jobs = [
   { source: "launcher.cs", out: "中医工作台.exe" },
   { source: "stopper.cs", out: "停止工作台.exe" },
   { source: "autostart.cs", out: "开机自启.exe" },
   { source: "autostart.cs", out: "取消自启.exe", define: "REMOVE" },
+  { source: "tray.cs", out: "工作台托盘.exe", refs: refsWinForms },
 ];
 
 for (const job of jobs) {
@@ -36,6 +43,7 @@ for (const job of jobs) {
     "/optimize+",
   ];
   if (job.define) args.push(`/define:${job.define}`);
+  for (const ref of job.refs ?? []) args.push(`/r:${ref}`);
   if (existsSync(icon)) args.push(`/win32icon:${icon}`);
   args.push(`/out:${path.join(outDir, job.out)}`, path.join(src, job.source));
   execFileSync(csc, args, { stdio: "inherit" });

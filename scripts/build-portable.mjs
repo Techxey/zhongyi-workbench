@@ -133,7 +133,7 @@ for (const file of readdirSync(packaging)) {
 }
 // 启动器/停止器/自启工具 exe（用系统自带 csc 编译，见 scripts/build-exe.mjs）
 run(nodeExe, [path.join(root, "scripts", "build-exe.mjs")]);
-for (const exe of ["中医工作台.exe", "停止工作台.exe", "开机自启.exe", "取消自启.exe"]) {
+for (const exe of ["中医工作台.exe", "停止工作台.exe", "工作台托盘.exe", "开机自启.exe", "取消自启.exe"]) {
   const from = path.join(packaging, "bin", exe);
   if (!existsSync(from)) {
     console.error(`缺少 ${from}，请先确认 build-exe.mjs 能编译成功`);
