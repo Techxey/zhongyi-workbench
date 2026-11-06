@@ -25,6 +25,8 @@ function run(command, args, options = {}) {
 console.log("1/6 next build（standalone）…");
 // 上一次构建留下的 standalone 里是符号链接，直接重跑 next build 会报 EPERM: symlink
 rmSync(standalone, { recursive: true, force: true });
+// 没开「开发者模式」的 Windows 没有 symlink 权限，先给 next 打补丁（建不了链接就复制）
+run(nodeExe, [path.join(root, "scripts", "patch-next-symlink.mjs")]);
 run(nodeExe, [path.join(root, "node_modules", "next", "dist", "bin", "next"), "build"]);
 
 console.log("2/6 准备输出目录…");
