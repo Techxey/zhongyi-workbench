@@ -86,19 +86,20 @@ export default async function KbPage() {
   const usageMap = new Map<string, number>();
   for (const row of usage) if (row.kbItemId) usageMap.set(row.kbItemId, row._count._all);
 
-  // 古籍的 rawJson 动辄几 MB（701 部合计 ~174MB），绝不能整表取回来：
-  // 只给「医案」这类真正需要病历正文的条目单独补一次 rawJson。
+  // 古籍/医案的正文存在 kb_item_bodies（701 部合计 ~174MB），绝不能整表取回来：
+  // 只给「医案」这类真正需要病历正文的条目单独补一次正文。
   const caseIds = items.filter((item) => item.type === "case").map((item) => item.id);
   const caseRawMap = new Map<string, string>();
   if (caseIds.length > 0) {
-    const caseVersions = await prisma.kbItemVersion.findMany({
-      where: { kbItemId: { in: caseIds } },
-      orderBy: [{ kbItemId: "asc" }, { version: "desc" }],
-      select: { kbItemId: true, rawJson: true },
+    const caseBodies = await prisma.kbItemBody.findMany({
+      where: { version: { kbItemId: { in: caseIds } } },
+      orderBy: { version: { version: "desc" } },
+      select: { rawJson: true, version: { select: { kbItemId: true } } },
     });
-    for (const version of caseVersions) {
-      if (!caseRawMap.has(version.kbItemId) && version.rawJson) {
-        caseRawMap.set(version.kbItemId, version.rawJson);
+    for (const body of caseBodies) {
+      const itemId = body.version.kbItemId;
+      if (!caseRawMap.has(itemId) && body.rawJson) {
+        caseRawMap.set(itemId, body.rawJson);
       }
     }
   }

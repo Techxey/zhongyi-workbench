@@ -345,7 +345,7 @@ export async function saveVisitAsCase(visitId: string): Promise<SaveCaseResult> 
       updatedAt: now,
     },
   });
-  await prisma.kbItemVersion.create({
+  const caseVersion = await prisma.kbItemVersion.create({
     data: {
       kbItemId: item.id,
       version: 1,
@@ -356,6 +356,12 @@ export async function saveVisitAsCase(visitId: string): Promise<SaveCaseResult> 
         .join("；"),
       usageText: prescription.usageText ?? "",
       commentary: (revision.advice ?? "").slice(0, 200),
+      createdAt: now,
+    },
+  });
+  await prisma.kbItemBody.create({
+    data: {
+      versionId: caseVersion.id,
       rawJson: JSON.stringify({
         patient: visit.patient.name,
         visitAt: visit.visitAt,
@@ -370,7 +376,6 @@ export async function saveVisitAsCase(visitId: string): Promise<SaveCaseResult> 
         symptoms: listOf(revision.symptomsJson),
         advice: revision.advice,
       }),
-      createdAt: now,
     },
   });
 

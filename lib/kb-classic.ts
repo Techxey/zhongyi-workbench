@@ -2,11 +2,12 @@ import { prisma } from "@/lib/db";
 
 /**
  * 古籍：书名/作者/简介/章节数这类「轻」元数据进内存索引与列表页，
- * 正文（rawJson.text / rawJson.chapters 里的全文）另存一份到 classic_chunks 并按 FTS5 建索引。
+ * 正文（kb_item_bodies.rawJson 的 text / chapters）另存一份到 classic_chunks 并按 FTS5 建索引。
  *
  * 存储约定（见 scripts/import-classics.mjs 与 scripts/build-classic-fts.mjs）：
  *   kb_items.type = "classic"，source = "作者·朝代"
- *   kb_item_versions.raw_json = JSON.stringify({ text, chapters:[{title,text}], source, charCount, author, dynasty, intro })
+ *   kb_item_bodies.raw_json = JSON.stringify({ text, chapters:[{title,text}], source, charCount, author, dynasty, intro })
+ *     （正文单独一张表：701 部合计 ~174MB，留在 kb_item_versions 会让任何版本查询都去读这些大页）
  *   kb_item_versions.indication = 简介（正文前 200 字）
  *   kb_item_versions.commentary = JSON.stringify({ chars, chapters, author, dynasty })
  *   classic_chunks(rowid, item_id, chapter_no, chapter_title, body)  —— 正文按章切块（全书，不止前 3 万字）
@@ -307,13 +308,17 @@ export async function getClassicBook(id: string): Promise<ClassicBook | null> {
       versions: {
         orderBy: { version: "desc" },
         take: 1,
-        select: { rawJson: true, indication: true, commentary: true },
+        select: {
+          indication: true,
+          commentary: true,
+          body: { select: { rawJson: true } },
+        },
       },
     },
   });
   if (!item || item.type !== "classic") return null;
   const version = item.versions[0];
-  const raw = parseClassicRaw(version?.rawJson ?? null);
+  const raw = parseClassicRaw(version?.body?.rawJson ?? null);
   const meta = parseClassicMeta(version?.commentary ?? null);
   return {
     id: item.id,

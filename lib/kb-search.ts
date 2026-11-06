@@ -80,7 +80,7 @@ export async function loadKbIndex(force = false): Promise<Index> {
 
   const [items, usage] = await Promise.all([
     prisma.kbItem.findMany({
-      // 古籍正文 170MB 全在 kb_item_versions.rawJson，这里必须显式 select，
+      // 古籍正文 170MB 全在 kb_item_bodies.rawJson，这里必须显式 select，
       // 否则光一次索引就会把整库正文读进内存。
       select: {
         id: true,

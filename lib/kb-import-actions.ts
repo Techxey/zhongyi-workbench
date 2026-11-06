@@ -444,7 +444,7 @@ export async function commitImport(
               _max: { version: true },
             });
             const version = Math.max(existing.currentVersion, latest._max.version ?? 0) + 1;
-            await tx.kbItemVersion.create({
+            const createdVersion = await tx.kbItemVersion.create({
               data: {
                 kbItemId: existing.id,
                 version,
@@ -454,11 +454,11 @@ export async function commitImport(
                 usageText: draft.usageText || null,
                 contraindication: draft.contraindication || null,
                 commentary: draft.commentary || null,
-                rawJson,
                 batchId,
                 createdAt: now,
               },
             });
+            await tx.kbItemBody.create({ data: { versionId: createdVersion.id, rawJson } });
             await tx.kbItem.update({
               where: { id: existing.id },
               data: { currentVersion: version, status: "active", updatedAt: now },
@@ -479,7 +479,7 @@ export async function commitImport(
                 updatedAt: now,
               },
             });
-            await tx.kbItemVersion.create({
+            const createdVersion = await tx.kbItemVersion.create({
               data: {
                 kbItemId: itemId,
                 version: 1,
@@ -489,11 +489,11 @@ export async function commitImport(
                 usageText: draft.usageText || null,
                 contraindication: draft.contraindication || null,
                 commentary: draft.commentary || null,
-                rawJson,
                 batchId,
                 createdAt: now,
               },
             });
+            await tx.kbItemBody.create({ data: { versionId: createdVersion.id, rawJson } });
             inserted += 1;
           }
 

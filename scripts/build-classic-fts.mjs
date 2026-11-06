@@ -77,9 +77,10 @@ async function main() {
   }
 
   const books = await prisma.$queryRawUnsafe(`
-    SELECT i.id AS id, i.name AS name, i.source AS source, v.raw_json AS rawJson
+    SELECT i.id AS id, i.name AS name, i.source AS source, b.raw_json AS rawJson
     FROM kb_items i
     JOIN kb_item_versions v ON v.kb_item_id = i.id AND v.version = i.current_version
+    JOIN kb_item_bodies b ON b.version_id = v.id
     WHERE i.type = 'classic'
     ORDER BY i.name ASC`);
 

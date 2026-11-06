@@ -148,14 +148,24 @@ model KbItemVersion {
   usageText        String? @map("usage_text")
   contraindication String?
   commentary       String?
-  rawJson          String? @map("raw_json")
   batchId          String? @map("batch_id")
   createdAt        String  @map("created_at")
 
   item KbItem @relation(fields: [kbItemId], references: [id])
+  body KbItemBody?
 
   @@unique([kbItemId, version])
   @@map("kb_item_versions")
+}
+
+model KbItemBody {
+  id        String @id @default(uuid())
+  versionId String @unique @map("version_id")
+  rawJson   String @map("raw_json")
+
+  version KbItemVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@map("kb_item_bodies")
 }
 
 model KbAlias {

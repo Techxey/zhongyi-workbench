@@ -5,7 +5,7 @@
  * 入库约定：
  *   kb_items.type = "classic"，name 去掉 `NNN-` 前缀与 `.txt`，source = 作者·朝代
  *   kb_item_versions.version = 1
- *   raw_json  = JSON.stringify({ text, chapters:[{title,text}], source, charCount, author, dynasty, intro })
+ *   kb_item_bodies.raw_json = JSON.stringify({ text, chapters:[{title,text}], source, charCount, author, dynasty, intro })
  *   indication = 简介（正文前 200 字）
  *   commentary = JSON.stringify({ chars, chapters, author, dynasty })
  * 幂等：按 (type, name, source) 已存在则更新版本内容，不重复插入。
@@ -216,10 +216,17 @@ async function saveBook(book) {
     dynasty: book.dynasty,
   });
   const payload = {
-    rawJson,
     indication: book.intro,
     commentary,
     batchId: null,
+  };
+
+  const saveBody = async (versionId) => {
+    await prisma.kbItemBody.upsert({
+      where: { versionId },
+      create: { versionId, rawJson },
+      update: { rawJson },
+    });
   };
 
   const existing = await prisma.kbItem.findFirst({
@@ -236,14 +243,18 @@ async function saveBook(book) {
     }
     if (version) {
       await prisma.kbItemVersion.update({ where: { id: version.id }, data: payload });
+      await saveBody(version.id);
     } else {
-      await prisma.kbItemVersion.create({ data: { kbItemId: existing.id, version: 1, ...payload, createdAt: now } });
+      const created = await prisma.kbItemVersion.create({
+        data: { kbItemId: existing.id, version: 1, ...payload, createdAt: now },
+      });
+      await saveBody(created.id);
     }
     await prisma.kbItem.update({ where: { id: existing.id }, data: { currentVersion: 1, updatedAt: now } });
     return "updated";
   }
 
-  await prisma.kbItem.create({
+  const createdItem = await prisma.kbItem.create({
     data: {
       type: "classic",
       name: book.name,
@@ -252,9 +263,12 @@ async function saveBook(book) {
       status: "active",
       createdAt: now,
       updatedAt: now,
-      versions: { create: [{ version: 1, ...payload, createdAt: now }] },
     },
   });
+  const createdVersion = await prisma.kbItemVersion.create({
+    data: { kbItemId: createdItem.id, version: 1, ...payload, createdAt: now },
+  });
+  await saveBody(createdVersion.id);
   return "created";
 }
 
