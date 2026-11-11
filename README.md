@@ -117,9 +117,9 @@ data/seed/      示例方剂/中药 CSV 与来源说明
 scripts/        正式脚本（导入古籍、打包、备份恢复、端到端回归）；scripts/dev 放开发期截图/自检脚本
 packaging/      桌面版启动器 / 托盘 / 安装器源码与说明
 docs/           README 截图等文档资源
-dist/          打包产物（便携版、安装包；不入库）
-backups/       数据库备份（本地，不入库）
-archive/       历史归档，如旧截图 zip（不入库）
+
+> 打包产物（便携版/安装包，
+ode scripts/build-portable.mjs 默认输出到 dist/）与数据库、备份、古籍原始文本都不入库；本机实际存放在项目外的 D:\中医工作台-运行\（程序 / 数据 / 备份 / 古籍 / 归档，见该目录内 README.md）。
 ```
 
 ## 配置
