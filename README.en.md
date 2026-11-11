@@ -117,9 +117,12 @@ components/     shared UI (rail, top bar, search overlay, term chips, attachment
 lib/            domain logic (auth, validation, search index, import parsing, print options…)
 prisma/         schema, migrations, seed script
 data/seed/      sample formula/herb CSVs and provenance notes
-scripts/        import, packaging, screenshot, end-to-end regression scripts
+scripts/        production scripts (classics import, packaging, backup/restore, e2e regression); scripts/dev holds dev-time screenshot/self-check scripts
 packaging/      desktop launcher / tray / installer sources and notes
 docs/           documentation assets such as screenshots
+dist/           build artifacts (portable app, installer; not tracked)
+backups/        database backups (local, not tracked)
+archive/        historical archives such as old screenshot zips (not tracked)
 ```
 
 ## Configuration

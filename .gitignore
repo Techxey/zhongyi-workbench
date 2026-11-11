@@ -29,3 +29,4 @@ dist-test/
 data/logs/
 data/session-secret.txt
 *.log
+archive/
